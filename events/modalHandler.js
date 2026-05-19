@@ -28,8 +28,10 @@ async function handleModalInteraction(interaction) {
         const newDescription = lines.join('\n');
         const newEmbed = EmbedBuilder.from(embed).setDescription(newDescription);
 
+        await interaction.deferReply({ ephemeral: true });
+        
         await message.edit({ embeds: [newEmbed] });
-        await interaction.reply({ content: `เลื่อนเวลาเป็น **${newTime}** เรียบร้อยแล้ว`, ephemeral: true });
+        await interaction.editReply({ content: `เลื่อนเวลาเป็น **${newTime}** เรียบร้อยแล้ว` });
         
         // อัปเดตตารางเวลา
         scheduleJob(message, newTime);
@@ -81,10 +83,13 @@ async function handleModalInteraction(interaction) {
         const hostId = interaction.user.id;
         const hostUser = await interaction.client.users.fetch(hostId);
         
+        await interaction.deferReply();
+
         // สร้างข้อมูลผู้เล่นสำหรับ Canvas
         const playersArray = [{
             id: hostId,
-            avatarUrl: hostUser.displayAvatarURL({ extension: 'png', size: 128 })
+            avatarUrl: hostUser.displayAvatarURL({ extension: 'png', size: 128 }),
+            name: hostUser.username
         }];
 
         // วาดภาพ Canvas
@@ -126,11 +131,10 @@ async function handleModalInteraction(interaction) {
         const row = new ActionRowBuilder()
             .addComponents(joinButton, leaveButton, editTimeButton, cancelButton);
 
-        const replyMsg = await interaction.reply({ 
+        const replyMsg = await interaction.editReply({ 
             embeds: [embed], 
             components: [row], 
-            files: [attachment],
-            fetchReply: true 
+            files: [attachment]
         });
         
         // ถ้าเป็น Valorant ให้ดึงหัวห้องเลือกตำแหน่งด้วย
