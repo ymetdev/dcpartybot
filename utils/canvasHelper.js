@@ -89,9 +89,29 @@ async function generatePartyImage(game, time, maxPlayers, playersArray, standbys
     ctx.textAlign = 'left';
     ctx.fillText('▪  LOBBY  ▪', 35, 35);
 
+    const playersText = `${playersArray.length}/${maxPlayers} PLAYERS`;
     ctx.fillStyle = themeColor;
+    ctx.font = 'bold 11px sans-serif';
     ctx.textAlign = 'right';
-    ctx.fillText(`⌖  ${playersArray.length}/${maxPlayers} PLAYERS`, width - 35, 35);
+    ctx.fillText(playersText, width - 35, 35);
+
+    // วาดไอคอนเป้าเล็งเวกเตอร์ (Vector Target/Crosshair Icon) เพื่อเลี่ยงฟอนต์พังบนเซิร์ฟเวอร์
+    const textWidth = ctx.measureText(playersText).width;
+    const targetX = width - 35 - textWidth - 14;
+    const targetY = 31;
+
+    ctx.strokeStyle = themeColor;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(targetX, targetY, 4, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(targetX - 7, targetY);
+    ctx.lineTo(targetX + 7, targetY);
+    ctx.moveTo(targetX, targetY - 7);
+    ctx.lineTo(targetX, targetY + 7);
+    ctx.stroke();
 
     // 3. ชื่อล็อบบี้เกมสไตล์ Sci-Fi (Lobby Title)
     ctx.fillStyle = '#FFFFFF';
@@ -174,16 +194,16 @@ async function generatePartyImage(game, time, maxPlayers, playersArray, standbys
     for (let j = 0; j < 4; j++) {
         const dx = tbX - 45 + j * 8;
         ctx.beginPath();
-        ctx.moveTo(dx, dashY + 12);
-        ctx.lineTo(dx + 6, dashY - 2);
+        ctx.moveTo(dx, dashY - 2);
+        ctx.lineTo(dx + 6, dashY + 12);
         ctx.stroke();
     }
     // ฝั่งขวา (////)
     for (let j = 0; j < 4; j++) {
         const dx = tbX + tbW + 15 + j * 8;
         ctx.beginPath();
-        ctx.moveTo(dx, dashY - 2);
-        ctx.lineTo(dx + 6, dashY + 12);
+        ctx.moveTo(dx, dashY + 12);
+        ctx.lineTo(dx + 6, dashY - 2);
         ctx.stroke();
     }
 
