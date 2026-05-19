@@ -1,25 +1,23 @@
 const schedule = require('node-schedule');
+const moment = require('moment-timezone');
 
 // Store active jobs by message ID
 const jobs = new Map(); 
 
-// แปลงเวลา HH:MM เป็น Date object
+// แปลงเวลา HH:MM ให้เป็น Date object อ้างอิงตามเวลาไทย (UTC+7)
 function getExactTime(timeStr) {
     const match = timeStr.match(/^(\d{1,2}):(\d{2})$/);
     if (!match) return null;
 
-    const hours = parseInt(match[1]);
-    const minutes = parseInt(match[2]);
-
-    const now = new Date();
-    let targetTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hours, minutes, 0, 0);
-
-    // ถ้าเวลาผ่านไปแล้ว ถือว่าเป็นวันพรุ่งนี้
-    if (targetTime < now) {
-        targetTime.setDate(targetTime.getDate() + 1);
+    // สร้างเวลาใน Timezone ประเทศไทย (Asia/Bangkok)
+    const exactTime = moment.tz(timeStr, 'HH:mm', 'Asia/Bangkok');
+    
+    // ถ้าเวลาที่ใส่มามันน้อยกว่าเวลาปัจจุบัน (แปลว่าเวลาผ่านไปแล้วของวันนี้) ให้ปัดไปเป็นวันพรุ่งนี้
+    if (exactTime.isBefore(moment.tz('Asia/Bangkok'))) {
+        exactTime.add(1, 'day');
     }
 
-    return targetTime;
+    return exactTime.toDate(); // คืนค่าเป็น Native Date object (Epoch) ซึ่งข้ามกำแพง Timezone ไปเลย
 }
 
 function scheduleJob(message, timeStr) {
@@ -34,9 +32,8 @@ function scheduleJob(message, timeStr) {
         return false;
     }
 
-    const reminderTime = new Date(exactTime.getTime());
-    reminderTime.setMinutes(reminderTime.getMinutes() - 15);
-    
+    // เวลาเตือนล่วงหน้า 15 นาที
+    const reminderTime = new Date(exactTime.getTime() - (15 * 60 * 1000));
     const now = new Date();
     const jobList = [];
 
@@ -58,7 +55,7 @@ function scheduleJob(message, timeStr) {
             }
 
             if (mentions.length > 0) {
-                await message.channel.send(`⏰ ${mentions.join(' ')}\nปาร์ตี้ **${embed.title}** ${alertMsg}`);
+                await message.channel.send(`⏰ ${mentions.join(' ')}\nปาร์ตี้ **${embed.title.replace('🎮 ', '')}** ${alertMsg}`);
             }
         } catch (error) {
             console.error("Error running job", error);
@@ -83,7 +80,7 @@ function scheduleJob(message, timeStr) {
 
     if (jobList.length > 0) {
         jobs.set(messageId, jobList);
-        console.log(`ตั้งปลุกสำหรับ ${messageId} เวลา ${exactTime.toLocaleTimeString()}`);
+        console.log(`ตั้งปลุกสำหรับ ${messageId} เวลา ${exactTime.toLocaleString()}`);
         return true;
     }
     return false;
