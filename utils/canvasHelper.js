@@ -38,6 +38,24 @@ const ROLE_LETTERS = {
     'Flex': 'F'
 };
 
+const loadedIconsCache = {};
+async function getRoleIcon(roleName) {
+    const roleKey = roleName.toLowerCase();
+    if (loadedIconsCache[roleKey]) return loadedIconsCache[roleKey];
+    
+    const iconPath = path.join(__dirname, `../assets/icons/${roleKey}.png`);
+    if (fs.existsSync(iconPath)) {
+        try {
+            const img = await loadImage(iconPath);
+            loadedIconsCache[roleKey] = img;
+            return img;
+        } catch (e) {
+            console.error(`ไม่สามารถโหลดไอคอน ${roleName}:`, e);
+        }
+    }
+    return null;
+}
+
 async function generatePartyImage(game, time, maxPlayers, playersArray, standbysArray) {
     const width = 800;
     const height = 450;
@@ -173,22 +191,29 @@ async function generatePartyImage(game, time, maxPlayers, playersArray, standbys
             // Role Icon สำหรับ Valorant
             if (p.role && isValorant) {
                 const roleColor = ROLE_COLORS[p.role] || '#FFFFFF';
-                const roleChar = ROLE_LETTERS[p.role] || '?';
+                const roleImg = await getRoleIcon(p.role);
                 
                 // วาดวงกลมเล็กๆ มุมขวาล่าง
                 const iconX = startX + 30;
                 const iconY = startY + 30;
                 ctx.beginPath();
-                ctx.arc(iconX, iconY, 14, 0, Math.PI * 2);
-                ctx.fillStyle = roleColor;
+                ctx.arc(iconX, iconY, 15, 0, Math.PI * 2);
+                ctx.fillStyle = '#0F1115';
                 ctx.fill();
                 ctx.lineWidth = 2;
-                ctx.strokeStyle = '#0F1115';
+                ctx.strokeStyle = roleColor;
                 ctx.stroke();
 
-                ctx.fillStyle = '#000000';
-                ctx.font = 'bold 16px sans-serif';
-                ctx.fillText(roleChar, iconX, iconY + 5);
+                if (roleImg) {
+                    // วาดไอคอนบทบาทลงในวงกลม
+                    const imgSize = 20;
+                    ctx.drawImage(roleImg, iconX - (imgSize / 2), iconY - (imgSize / 2), imgSize, imgSize);
+                } else {
+                    // Fallback เป็นตัวหนังสือตัวแรกถ้าโหลดรูปไม่ขึ้น
+                    ctx.fillStyle = '#FFFFFF';
+                    ctx.font = 'bold 14px sans-serif';
+                    ctx.fillText(p.role[0], iconX, iconY + 5);
+                }
             }
 
         } else {
