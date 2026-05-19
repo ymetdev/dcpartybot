@@ -13,6 +13,7 @@ async function handleButtonInteraction(interaction) {
 
     let timeStr = "";
     let hostStr = "";
+    let detailsStr = "";
     let currentCount = 0;
     let maxPlayers = 0;
     let players = [];
@@ -27,6 +28,8 @@ async function handleButtonInteraction(interaction) {
 
         if (line.startsWith('**เวลา:**')) {
             timeStr = line.replace('**เวลา:**', '').trim();
+        } else if (line.startsWith('**รายละเอียด:**')) {
+            detailsStr = line;
         } else if (line.startsWith('**ปาร์ตี้โดย:**')) {
             hostStr = line;
         } else if (line.startsWith('**รายชื่อผู้เข้าร่วม')) {
@@ -238,7 +241,11 @@ async function handleButtonInteraction(interaction) {
     const buffer = await generatePartyImage(gameName, cleanTime, maxPlayers, playersArray, standbysArray);
     const attachment = new AttachmentBuilder(buffer, { name: 'party-banner.png' });
 
-    let newDesc = `**เวลา:** ${timeStr}\n${hostStr}\n\n**รายชื่อผู้เข้าร่วม (${currentCount}/${maxPlayers}):**\n${players.join('\n')}`;
+    let newDesc = `**เวลา:** ${timeStr}\n${hostStr}\n`;
+    if (detailsStr) {
+        newDesc += `${detailsStr}\n`;
+    }
+    newDesc += `\n**รายชื่อผู้เข้าร่วม (${currentCount}/${maxPlayers}):**\n${players.join('\n')}`;
     if (standbys.length > 0) {
         newDesc += `\n\n**ตัวสำรอง:**\n${standbys.join('\n')}`;
     }

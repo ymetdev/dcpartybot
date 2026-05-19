@@ -71,6 +71,15 @@ client.on(Events.InteractionCreate, async interaction => {
         if (handleModalInteraction) {
             await handleModalInteraction(interaction);
         }
+    } else if (interaction.isAutocomplete()) {
+        if (interaction.commandName === 'schedule') {
+            const focusedValue = interaction.options.getFocused();
+            const choices = ['Valorant', 'Minecraft'];
+            const filtered = choices.filter(choice => choice.toLowerCase().includes(focusedValue.toLowerCase()));
+            await interaction.respond(
+                filtered.map(choice => ({ name: choice, value: choice }))
+            );
+        }
     }
 });
 
