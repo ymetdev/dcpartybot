@@ -182,107 +182,162 @@ async function generatePartyImage(game, time, maxPlayers, playersArray, standbys
     ctx.font = 'bold 16px "Noto Sans Thai", sans-serif';
     ctx.fillText(`${playersArray.length} / ${maxPlayers} PLAYERS`, width / 2, 192);
 
-    // 4. วาดช่องโปรไฟล์ (Avatar)
-    const circleRadius = 45;
-    const gap = 35;
-    const totalWidth = (maxPlayers * (circleRadius * 2)) + ((maxPlayers - 1) * gap);
-    let startX = (width - totalWidth) / 2 + circleRadius;
-    const startY = 265;
+    // 4. วาด Lobby Player Cards
+    const cardWidth = 120;
+    const cardHeight = 180;
+    const gap = 18;
+    const totalWidth = (maxPlayers * cardWidth) + ((maxPlayers - 1) * gap);
+    let startX = (width - totalWidth) / 2;
+    const cardY = 210;
 
     for (let i = 0; i < maxPlayers; i++) {
-        // Drop shadow สำหรับรูปคน
-        ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
-        ctx.shadowBlur = 10;
-        ctx.shadowOffsetY = 5;
-
-        // กรอบวงกลม
-        ctx.beginPath();
-        ctx.arc(startX, startY, circleRadius, 0, Math.PI * 2, true);
-        ctx.closePath();
-        ctx.lineWidth = 4;
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
-        ctx.stroke();
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.05)';
-        ctx.fill();
-        ctx.shadowBlur = 0;
-        ctx.shadowOffsetY = 0;
+        const cardX = startX + i * (cardWidth + gap);
 
         if (i < playersArray.length) {
             const p = playersArray[i];
-            try {
-                if (p.avatarUrl) {
+
+            // วาดการ์ดแบบผู้เล่นเข้าร่วมแล้ว
+            ctx.fillStyle = isValorant ? 'rgba(255, 70, 85, 0.06)' : 'rgba(78, 204, 163, 0.06)';
+            ctx.beginPath();
+            ctx.roundRect(cardX, cardY, cardWidth, cardHeight, 10);
+            ctx.fill();
+            
+            ctx.lineWidth = 1.5;
+            ctx.strokeStyle = isValorant ? 'rgba(255, 70, 85, 0.25)' : 'rgba(78, 204, 163, 0.25)';
+            ctx.stroke();
+
+            // รัศมีอวาตาร์
+            const avatarRadius = 28;
+            const avatarX = cardX + (cardWidth / 2);
+            const avatarY = cardY + 46;
+
+            // วาดขอบอวาตาร์
+            ctx.beginPath();
+            ctx.arc(avatarX, avatarY, avatarRadius, 0, Math.PI * 2);
+            ctx.strokeStyle = themeColor;
+            ctx.lineWidth = 2.5;
+            ctx.stroke();
+
+            if (p.avatarUrl) {
+                try {
                     const avatar = await loadImage(p.avatarUrl);
                     ctx.save();
                     ctx.beginPath();
-                    ctx.arc(startX, startY, circleRadius - 2, 0, Math.PI * 2, true);
-                    ctx.closePath();
+                    ctx.arc(avatarX, avatarY, avatarRadius - 1.5, 0, Math.PI * 2);
                     ctx.clip();
-                    ctx.drawImage(avatar, startX - circleRadius + 2, startY - circleRadius + 2, (circleRadius - 2) * 2, (circleRadius - 2) * 2);
+                    ctx.drawImage(avatar, avatarX - avatarRadius + 1.5, avatarY - avatarRadius + 1.5, (avatarRadius - 1.5) * 2, (avatarRadius - 1.5) * 2);
                     ctx.restore();
-                    
-                    // เส้นขอบสีตามสถานะ
-                    ctx.beginPath();
-                    ctx.arc(startX, startY, circleRadius, 0, Math.PI * 2, true);
-                    ctx.strokeStyle = themeColor;
-                    ctx.stroke();
+                } catch (err) {
+                    console.error('ไม่สามารถโหลดรูปลงการ์ดได้', err);
                 }
-            } catch (err) {
-                console.error('ไม่สามารถโหลดรูปลง Canvas', err);
             }
-            
-            // ชื่อ Discord ใต้รูป
-            ctx.fillStyle = '#FFFFFF';
-            ctx.font = 'bold 14px "Noto Sans Thai", sans-serif';
-            ctx.textAlign = 'center';
-            let shortName = p.name ? (p.name.length > 10 ? p.name.substring(0,8)+'..' : p.name) : 'Player';
-            ctx.fillText(shortName, startX, startY + circleRadius + 20);
 
             // HOST Badge
             if (i === 0) {
                 ctx.fillStyle = '#F39C12';
-                ctx.fillRect(startX - 25, startY - circleRadius - 15, 50, 18);
+                ctx.beginPath();
+                ctx.roundRect(cardX + (cardWidth - 54) / 2, cardY - 8, 54, 16, 4);
+                ctx.fill();
+                
                 ctx.fillStyle = '#000000';
-                ctx.font = 'bold 12px "Noto Sans Thai", sans-serif';
-                ctx.fillText('HOST', startX, startY - circleRadius - 2);
+                ctx.font = 'bold 10px "Noto Sans Thai", sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText('HOST', cardX + (cardWidth / 2), cardY + 4);
             }
 
             // Role Icon สำหรับ Valorant
-            if (p.role && isValorant) {
-                const roleColor = ROLE_COLORS[p.role] || '#FFFFFF';
-                const roleImg = await getRoleIcon(p.role);
-                
-                // วาดวงกลมเล็กๆ มุมขวาล่าง
-                const iconX = startX + 30;
-                const iconY = startY + 30;
-                ctx.beginPath();
-                ctx.arc(iconX, iconY, 15, 0, Math.PI * 2);
-                ctx.fillStyle = '#0F1115';
-                ctx.fill();
-                ctx.lineWidth = 2;
-                ctx.strokeStyle = roleColor;
-                ctx.stroke();
+            if (isValorant) {
+                if (p.role) {
+                    const roleColor = ROLE_COLORS[p.role] || '#FFFFFF';
+                    const roleImg = await getRoleIcon(p.role);
+                    
+                    const roleBadgeWidth = 84;
+                    const roleBadgeHeight = 24;
+                    const roleBadgeX = cardX + (cardWidth - roleBadgeWidth) / 2;
+                    const roleBadgeY = cardY + 86;
 
-                if (roleImg) {
-                    // วาดไอคอนบทบาทลงในวงกลม
-                    const imgSize = 20;
-                    ctx.drawImage(roleImg, iconX - (imgSize / 2), iconY - (imgSize / 2), imgSize, imgSize);
-                } else {
-                    // Fallback เป็นตัวหนังสือตัวแรกถ้าโหลดรูปไม่ขึ้น
+                    ctx.fillStyle = 'rgba(15, 17, 21, 0.9)';
+                    ctx.beginPath();
+                    ctx.roundRect(roleBadgeX, roleBadgeY, roleBadgeWidth, roleBadgeHeight, 6);
+                    ctx.fill();
+                    ctx.lineWidth = 1;
+                    ctx.strokeStyle = roleColor;
+                    ctx.stroke();
+
+                    if (roleImg) {
+                        ctx.drawImage(roleImg, roleBadgeX + 6, roleBadgeY + 4, 16, 16);
+                    }
+                    
                     ctx.fillStyle = '#FFFFFF';
-                    ctx.font = 'bold 14px sans-serif';
-                    ctx.fillText(p.role[0], iconX, iconY + 5);
+                    ctx.font = 'bold 11px "Noto Sans Thai", sans-serif';
+                    ctx.textAlign = 'left';
+                    ctx.fillText(p.role, roleBadgeX + 26, roleBadgeY + 16);
+                } else {
+                    // ไม่มีตำแหน่ง (สำหรับผู้เล่นที่ยังไม่เลือก)
+                    const roleBadgeWidth = 84;
+                    const roleBadgeHeight = 24;
+                    const roleBadgeX = cardX + (cardWidth - roleBadgeWidth) / 2;
+                    const roleBadgeY = cardY + 86;
+
+                    ctx.fillStyle = 'rgba(15, 17, 21, 0.5)';
+                    ctx.beginPath();
+                    ctx.roundRect(roleBadgeX, roleBadgeY, roleBadgeWidth, roleBadgeHeight, 6);
+                    ctx.fill();
+                    ctx.lineWidth = 1;
+                    ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+                    ctx.stroke();
+
+                    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+                    ctx.font = '10px "Noto Sans Thai", sans-serif';
+                    ctx.textAlign = 'center';
+                    ctx.fillText('NO ROLE', cardX + (cardWidth / 2), roleBadgeY + 15);
                 }
             }
 
-        } else {
-            // สล็อตว่าง
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
-            ctx.font = 'bold 36px "Noto Sans Thai", sans-serif';
+            // ชื่อ Discord
+            ctx.fillStyle = '#FFFFFF';
+            ctx.font = 'bold 13px "Noto Sans Thai", sans-serif';
             ctx.textAlign = 'center';
-            ctx.fillText('+', startX, startY + 12);
-        }
+            let shortName = p.name ? (p.name.length > 12 ? p.name.substring(0,10)+'..' : p.name) : 'Player';
+            ctx.fillText(shortName, cardX + (cardWidth / 2), cardY + (isValorant ? 134 : 110));
 
-        startX += (circleRadius * 2) + gap;
+            // สถานะ READY
+            ctx.fillStyle = '#4ECCA3';
+            ctx.font = 'bold 11px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('READY', cardX + (cardWidth / 2), cardY + (isValorant ? 158 : 140));
+
+        } else {
+            // สล็อตว่าง (Dashed Empty Card)
+            ctx.fillStyle = 'rgba(15, 17, 21, 0.4)';
+            ctx.beginPath();
+            ctx.roundRect(cardX, cardY, cardWidth, cardHeight, 10);
+            ctx.fill();
+            
+            ctx.lineWidth = 1.5;
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+            ctx.setLineDash([4, 4]);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // วาดเครื่องหมาย + ตรงกลางสล็อตว่าง
+            const centerX = cardX + (cardWidth / 2);
+            const centerY = cardY + 65;
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(centerX - 8, centerY);
+            ctx.lineTo(centerX + 8, centerY);
+            ctx.moveTo(centerX, centerY - 8);
+            ctx.lineTo(centerX, centerY + 8);
+            ctx.stroke();
+
+            // ข้อความบอกสถานะสล็อตว่าง
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+            ctx.font = 'bold 10px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('OPEN SLOT', cardX + (cardWidth / 2), cardY + 145);
+        }
     }
     
     // 5. แสดงตัวสำรอง (Standbys)
