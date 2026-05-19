@@ -120,7 +120,39 @@ async function generatePartyImage(game, time, maxPlayers, playersArray, standbys
     // ตัวเลขเวลาขนาดใหญ่เน้นๆ
     ctx.fillStyle = '#FFFFFF';
     ctx.font = 'bold 24px "Noto Sans Thai", sans-serif';
-    ctx.fillText(`🕒 ${time} น.`, width / 2, timeBoardY + 43);
+    ctx.textAlign = 'left';
+    
+    const timeText = `${time} น.`;
+    const timeTextWidth = ctx.measureText(timeText).width;
+    
+    // จัดตำแหน่งให้ไอคอนนาฬิกาและตัวหนังสืออยู่กึ่งกลางร่วมกัน
+    const clockRadius = 9;
+    const gapBetween = 10;
+    const totalContentWidth = (clockRadius * 2) + gapBetween + timeTextWidth;
+    const startXPos = timeBoardX + (timeBoardWidth - totalContentWidth) / 2;
+    
+    // วาดไอคอนนาฬิกาเวกเตอร์ (Vector Clock Icon)
+    const clockX = startXPos + clockRadius;
+    const clockY = timeBoardY + 34;
+    ctx.strokeStyle = '#FFFFFF';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.arc(clockX, clockY, clockRadius, 0, Math.PI * 2);
+    ctx.stroke();
+    
+    // เข็มชั่วโมงและนาที
+    ctx.beginPath();
+    ctx.moveTo(clockX, clockY);
+    ctx.lineTo(clockX, clockY - 5);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(clockX, clockY);
+    ctx.lineTo(clockX + 4, clockY);
+    ctx.stroke();
+
+    // วาดข้อความเวลา
+    ctx.fillText(timeText, startXPos + (clockRadius * 2) + gapBetween, timeBoardY + 43);
+    ctx.textAlign = 'center'; // reset alignment
 
     // 3. Neon Progress Bar
     const barWidth = 400;
