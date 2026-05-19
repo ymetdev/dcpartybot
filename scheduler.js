@@ -1,3 +1,4 @@
+const { EmbedBuilder } = require('discord.js');
 const schedule = require('node-schedule');
 const moment = require('moment-timezone');
 
@@ -55,7 +56,49 @@ function scheduleJob(message, timeStr) {
             }
 
             if (mentions.length > 0) {
-                await message.channel.send(`⏰ ${mentions.join(' ')}\nปาร์ตี้ **${embed.title.replace('🎮 ', '')}** ${alertMsg}`);
+                const gameName = embed.title.replace('🎮 ', '');
+                const isValorant = gameName.toLowerCase().includes('valorant') || gameName.includes('วาโล');
+                const themeColor = isValorant ? '#FF4655' : '#4ECCA3';
+
+                // แยกข้อความรายชื่อผู้เล่นจาก Description
+                const lines = embed.description.split('\n');
+                let memberList = '';
+                let isCapturingMembers = false;
+                
+                for (const line of lines) {
+                    if (line.includes('สมาชิกปาร์ตี้')) {
+                        isCapturingMembers = true;
+                        continue;
+                    }
+                    if (isCapturingMembers && line.trim().startsWith('---')) {
+                        isCapturingMembers = false;
+                        continue;
+                    }
+                    if (isCapturingMembers && line.trim()) {
+                        memberList += `${line.trim()}\n`;
+                    }
+                }
+
+                if (!memberList) {
+                    memberList = mentions.map((m, idx) => `${idx + 1}. ${m}`).join('\n');
+                }
+
+                // สร้าง Embed แจ้งเตือนระดับพรีเมียม
+                const alertEmbed = new EmbedBuilder()
+                    .setTitle(isFinal ? '🚨 LOBBY MATCH ACTIVE / เริ่มเกม!' : '⏳ LOBBY REMINDER / ใกล้ถึงเวลา!')
+                    .setDescription(
+                        `ปาร์ตี้เกม **${gameName}** ${isFinal ? 'ถึงเวลาเริ่มเกมแล้ว ลุยเลย! 🚀' : 'จะเริ่มในอีก 15 นาทีครับ!'}\n\n` +
+                        `⚔️ **รายชื่อนักรบในทีม:**\n${memberList}\n` +
+                        `ขอให้สมาชิกทุกคนเตรียมตัว ล็อกอินเข้าเกมและสแตนด์บายได้เลย! 🎮`
+                    )
+                    .setColor(themeColor)
+                    .setTimestamp();
+
+                // ส่งแบบแท็กนอก Embed เพื่อให้มีระบบการแจ้งเตือนดังไปยังอุปกรณ์ของผู้ใช้
+                await message.channel.send({
+                    content: `🔔 ${mentions.join(' ')}`,
+                    embeds: [alertEmbed]
+                });
             }
         } catch (error) {
             console.error("Error running job", error);
