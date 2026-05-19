@@ -106,7 +106,7 @@ module.exports = {
         if (isValorant) {
             const { StringSelectMenuBuilder } = require('discord.js');
             const selectMenu = new StringSelectMenuBuilder()
-                .setCustomId('select_role')
+                .setCustomId(`select_role_${replyMsg.id}`)
                 .setPlaceholder('เลือกตำแหน่งที่คุณจะเล่น (Host)')
                 .addOptions([
                     { label: 'Duelist', value: 'Duelist', emoji: '⚔️' },

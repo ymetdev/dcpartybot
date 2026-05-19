@@ -3,10 +3,24 @@ const { generatePartyImage } = require('../utils/canvasHelper');
 
 async function handleButtonInteraction(interaction) {
     const customId = interaction.customId;
-    if (!['btn_join', 'btn_leave', 'btn_cancel', 'btn_edit_time', 'select_role'].includes(customId)) return;
+    const isSelectRole = customId === 'select_role' || customId.startsWith('select_role_');
+    if (!['btn_join', 'btn_leave', 'btn_cancel', 'btn_edit_time'].includes(customId) && !isSelectRole) return;
 
-    const message = interaction.message;
-    const embed = message.embeds[0];
+    let message;
+    if (customId.startsWith('select_role_')) {
+        const targetMessageId = customId.replace('select_role_', '');
+        try {
+            message = await interaction.channel.messages.fetch(targetMessageId);
+        } catch (e) {
+            console.error('ไม่สามารถดึงข้อความหลักได้:', e);
+            await interaction.reply({ content: '❌ ไม่พบข้อความปาร์ตี้เดิม หรือข้อความถูกลบไปแล้ว', ephemeral: true });
+            return;
+        }
+    } else {
+        message = interaction.message;
+    }
+
+    const embed = message ? message.embeds[0] : null;
     const userId = interaction.user.id;
 
     if (!embed) return;
@@ -106,7 +120,7 @@ async function handleButtonInteraction(interaction) {
         // กรณีเป็น Valorant ให้เลือกตำแหน่งก่อน
         if (isValorant && currentCount < maxPlayers) {
             const selectMenu = new StringSelectMenuBuilder()
-                .setCustomId('select_role')
+                .setCustomId(`select_role_${message.id}`)
                 .setPlaceholder('เลือกตำแหน่งที่คุณจะเล่น')
                 .addOptions([
                     { label: 'Duelist', value: 'Duelist', emoji: '⚔️' },
@@ -130,7 +144,7 @@ async function handleButtonInteraction(interaction) {
                 await interaction.reply({ content: 'คุณได้เข้าร่วมปาร์ตี้แล้ว!', ephemeral: true });
             }
         }
-    } else if (customId === 'select_role') {
+    } else if (customId === 'select_role' || customId.startsWith('select_role_')) {
         const role = interaction.values[0];
         
         if (inPlayers) {
