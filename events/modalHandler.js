@@ -133,6 +133,24 @@ async function handleModalInteraction(interaction) {
             fetchReply: true 
         });
         
+        // ถ้าเป็น Valorant ให้ดึงหัวห้องเลือกตำแหน่งด้วย
+        const isValorant = game.toLowerCase().includes('valorant') || game.includes('วาโล');
+        if (isValorant) {
+            const { StringSelectMenuBuilder } = require('discord.js');
+            const selectMenu = new StringSelectMenuBuilder()
+                .setCustomId('select_role')
+                .setPlaceholder('เลือกตำแหน่งที่คุณจะเล่น (Host)')
+                .addOptions([
+                    { label: 'Duelist', description: 'สายลุยทำดาเมจ', value: 'Duelist', emoji: '⚔️' },
+                    { label: 'Initiator', description: 'สายเปิดวิสัยทัศน์', value: 'Initiator', emoji: '👁️' },
+                    { label: 'Controller', description: 'สายควันควบคุมพื้นที่', value: 'Controller', emoji: '💨' },
+                    { label: 'Sentinel', description: 'สายป้องกันหลังบ้าน', value: 'Sentinel', emoji: '🛡️' }
+                ]);
+            const roleRow = new ActionRowBuilder().addComponents(selectMenu);
+            // ให้ Host เลือกผ่านข้อความ ephemeral ที่ตามมา
+            await interaction.followUp({ content: 'คุณเป็นหัวหน้าตี้! กรุณาเลือกตำแหน่งของคุณ:', components: [roleRow], ephemeral: true });
+        }
+
         // ตั้งปลุก
         scheduleJob(replyMsg, time);
     }

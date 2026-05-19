@@ -59,8 +59,8 @@ client.on(Events.InteractionCreate, async interaction => {
                 await interaction.reply({ content: 'เกิดข้อผิดพลาดในการรันคำสั่งนี้!', ephemeral: true });
             }
         }
-    } else if (interaction.isButton()) {
-        // รอรับ Event กดปุ่ม
+    } else if (interaction.isButton() || interaction.isStringSelectMenu()) {
+        // รอรับ Event กดปุ่ม หรือเลือกเมนู
         const { handleButtonInteraction } = require('./events/buttonHandler');
         if (handleButtonInteraction) {
             await handleButtonInteraction(interaction);
