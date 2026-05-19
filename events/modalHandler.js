@@ -41,25 +41,64 @@ async function handleModalInteraction(interaction) {
         const maxPlayers = currentCountMatch ? parseInt(currentCountMatch[2]) : 5;
         const gameName = embed.title.replace('🎮 ', '').trim();
         
+        let players = [];
+        let standbys = [];
+        let parseMode = 'header';
+
+        for (let line of lines) {
+            line = line.trim();
+            if (!line) continue;
+
+            if (line.startsWith('**รายชื่อผู้เข้าร่วม')) {
+                parseMode = 'players';
+            } else if (line.startsWith('**ตัวสำรอง:**')) {
+                parseMode = 'standbys';
+            } else if (parseMode === 'players' && line.match(/^\d+\.\s<@\d+>/)) {
+                players.push(line);
+            } else if (parseMode === 'standbys' && line.match(/^\d+\.\s<@\d+>/)) {
+                standbys.push(line);
+            }
+        }
+
         const playersArray = [];
-        const playersMatch = description.split('\n').filter(line => line.match(/^\d+\.\s<@\d+>/));
-        for (const pLine of playersMatch) {
-            const match = pLine.match(/<@(\d+)>/);
+        for (const pLine of players) {
+            const match = pLine.match(/<@(\d+)>(?:\s+\[(.*?)\])?/);
             if (match) {
                 const uid = match[1];
+                const role = match[2] || null;
                 try {
                     const user = await interaction.client.users.fetch(uid);
                     playersArray.push({
                         id: uid,
-                        avatarUrl: user.displayAvatarURL({ extension: 'png', size: 128 })
+                        avatarUrl: user.displayAvatarURL({ extension: 'png', size: 128 }),
+                        name: user.username,
+                        role: role
                     });
                 } catch (e) {
-                    playersArray.push({ id: uid, avatarUrl: null });
+                    playersArray.push({ id: uid, avatarUrl: null, name: 'Unknown', role: role });
                 }
             }
         }
 
-        const buffer = await generatePartyImage(gameName, newTime, maxPlayers, playersArray, []);
+        const standbysArray = [];
+        for (const sLine of standbys) {
+            const match = sLine.match(/<@(\d+)>/);
+            if (match) {
+                const uid = match[1];
+                try {
+                    const user = await interaction.client.users.fetch(uid);
+                    standbysArray.push({
+                        id: uid,
+                        avatarUrl: user.displayAvatarURL({ extension: 'png', size: 128 }),
+                        name: user.username
+                    });
+                } catch (e) {
+                    standbysArray.push({ id: uid, avatarUrl: null, name: 'Unknown' });
+                }
+            }
+        }
+
+        const buffer = await generatePartyImage(gameName, newTime, maxPlayers, playersArray, standbysArray);
         const attachment = new AttachmentBuilder(buffer, { name: 'party-banner.png' });
 
         const newEmbedWithImage = EmbedBuilder.from(newEmbed).setImage('attachment://party-banner.png');
