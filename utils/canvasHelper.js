@@ -63,6 +63,7 @@ async function generatePartyImage(game, time, maxPlayers, playersArray, standbys
     const ctx = canvas.getContext('2d');
 
     const isValorant = game.toLowerCase().includes('valorant') || game.includes('วาโล');
+    const themeColor = isValorant ? '#FF4655' : '#4ECCA3';
 
     // 1. วาดรูปพื้นหลัง (Dynamic Background)
     ctx.fillStyle = '#0F1115';
@@ -73,232 +74,266 @@ async function generatePartyImage(game, time, maxPlayers, playersArray, standbys
             const bgImage = await loadImage(bgBuffer);
             ctx.drawImage(bgImage, 0, 0, width, height);
             // สร้าง Filter มืดๆ ทับไม่ให้รูปกวนตัวหนังสือ
-            ctx.fillStyle = 'rgba(15, 17, 21, 0.7)';
+            ctx.fillStyle = 'rgba(15, 17, 21, 0.75)';
             ctx.fillRect(0, 0, width, height);
         }
     } catch (e) {}
 
-    // เส้นขอบสีธีมพรีเมียม
-    const themeColor = isValorant ? '#FF4655' : '#4ECCA3';
+    // เส้นขอบสีธีมพรีเมียมด้านบน
     ctx.fillStyle = themeColor;
     ctx.fillRect(0, 0, width, 8);
 
-    // 2. ตัวหนังสือ
-    ctx.fillStyle = '#FFFFFF';
-    ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
-    ctx.shadowBlur = 10;
-    ctx.font = 'bold 44px "Noto Sans Thai", sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText(`${game}`, width / 2, 70);
-    ctx.shadowBlur = 0; // Reset shadow
-
-    // 2.2 วาดแผงเวลาดิจิตอล (Digital Time Board)
-    const timeBoardWidth = 260;
-    const timeBoardHeight = 52;
-    const timeBoardX = (width - timeBoardWidth) / 2;
-    const timeBoardY = 92;
-
-    // พื้นหลังแผงเวลาสีเข้ม
-    ctx.fillStyle = 'rgba(10, 12, 16, 0.85)';
-    ctx.beginPath();
-    ctx.roundRect(timeBoardX, timeBoardY, timeBoardWidth, timeBoardHeight, 8);
-    ctx.fill();
-    
-    // เส้นขอบนีออนของแผงเวลา
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = themeColor;
-    ctx.shadowColor = themeColor;
-    ctx.shadowBlur = 8;
-    ctx.stroke();
-    ctx.shadowBlur = 0; // reset
-
-    // ตัวหนังสือ "START TIME" ตัวเล็กด้านบนแผง
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+    // 2. ตัวบ่งชี้มุมบน (Header Indicators)
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
     ctx.font = 'bold 11px sans-serif';
-    ctx.fillText('MATCH START TIME', width / 2, timeBoardY + 18);
-
-    // ตัวเลขเวลาขนาดใหญ่เน้นๆ
-    ctx.fillStyle = '#FFFFFF';
-    ctx.font = 'bold 24px "Noto Sans Thai", sans-serif';
     ctx.textAlign = 'left';
-    
-    const timeText = `${time} น.`;
-    const timeTextWidth = ctx.measureText(timeText).width;
-    
-    // จัดตำแหน่งให้ไอคอนนาฬิกาและตัวหนังสืออยู่กึ่งกลางร่วมกัน
-    const clockRadius = 9;
-    const gapBetween = 10;
-    const totalContentWidth = (clockRadius * 2) + gapBetween + timeTextWidth;
-    const startXPos = timeBoardX + (timeBoardWidth - totalContentWidth) / 2;
-    
-    // วาดไอคอนนาฬิกาเวกเตอร์ (Vector Clock Icon)
-    const clockX = startXPos + clockRadius;
-    const clockY = timeBoardY + 34;
+    ctx.fillText('▪  LOBBY  ▪', 35, 35);
+
+    ctx.fillStyle = themeColor;
+    ctx.textAlign = 'right';
+    ctx.fillText(`⌖  ${playersArray.length}/${maxPlayers} PLAYERS`, width - 35, 35);
+
+    // 3. ชื่อล็อบบี้เกมสไตล์ Sci-Fi (Lobby Title)
+    ctx.fillStyle = '#FFFFFF';
+    ctx.font = 'bold 20px sans-serif';
+    ctx.textAlign = 'center';
+    const spacedGame = game.toUpperCase().split('').join(' ');
+    ctx.fillText(`˯   ${spacedGame}   ˯`, width / 2, 75);
+
+    // 4. ข้อความหัวข้อเวลา
+    ctx.fillStyle = '#FFFFFF';
+    ctx.font = 'bold 28px sans-serif';
+    ctx.fillText('MATCH STARTS IN', width / 2, 122);
+
+    // 5. แผงเวลาตัดมุมแบบ Sci-Fi (Slanted Time Board)
+    const tbX = 260;
+    const tbY = 142;
+    const tbW = 280;
+    const tbH = 56;
+
+    ctx.strokeStyle = themeColor;
+    ctx.lineWidth = 1.5;
+    ctx.fillStyle = 'rgba(10, 12, 16, 0.85)';
+
+    ctx.beginPath();
+    // ตัดมุมบนซ้าย
+    ctx.moveTo(tbX + 15, tbY);
+    ctx.lineTo(tbX + tbW, tbY);
+    // ตัดมุมล่างขวา
+    ctx.lineTo(tbX + tbW - 15, tbY + tbH);
+    ctx.lineTo(tbX, tbY + tbH);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // วาดไอคอนนาฬิกาเวกเตอร์และตัวเลขเวลาด้านในแผง
+    const timeValText = `${time}`;
+    ctx.font = 'bold 32px sans-serif';
+    const valWidth = ctx.measureText(timeValText).width;
+    ctx.font = 'bold 18px "Noto Sans Thai", sans-serif';
+    const labelWidth = ctx.measureText(' น.').width;
+
+    const totalContentW = 22 + 12 + valWidth + labelWidth; // 22px คือไอคอนนาฬิกา, 12px ระยะห่าง
+    const startC = tbX + (tbW - totalContentW) / 2;
+
+    const cx = startC + 10;
+    const cy = tbY + 28;
     ctx.strokeStyle = '#FFFFFF';
     ctx.lineWidth = 2.5;
     ctx.beginPath();
-    ctx.arc(clockX, clockY, clockRadius, 0, Math.PI * 2);
-    ctx.stroke();
-    
-    // เข็มชั่วโมงและนาที
-    ctx.beginPath();
-    ctx.moveTo(clockX, clockY);
-    ctx.lineTo(clockX, clockY - 5);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(clockX, clockY);
-    ctx.lineTo(clockX + 4, clockY);
+    ctx.arc(cx, cy, 10, 0, Math.PI * 2);
     ctx.stroke();
 
-    // วาดข้อความเวลา
-    ctx.fillText(timeText, startXPos + (clockRadius * 2) + gapBetween, timeBoardY + 43);
+    // เข็มนาฬิกา
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(cx, cy - 5);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(cx + 4, cy);
+    ctx.stroke();
+
+    // ตัวเลขเวลาหลัก
+    ctx.fillStyle = themeColor;
+    ctx.font = 'bold 32px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText(timeValText, startC + 32, tbY + 38);
+
+    // หน่วย "น."
+    ctx.fillStyle = '#FFFFFF';
+    ctx.font = 'bold 18px "Noto Sans Thai", sans-serif';
+    ctx.fillText(' น.', startC + 32 + valWidth, tbY + 35);
     ctx.textAlign = 'center'; // reset alignment
 
-    // 3. Neon Progress Bar
-    const barWidth = 400;
-    const barHeight = 8;
-    const barX = (width - barWidth) / 2;
-    const barY = 162;
-    const progressRatio = playersArray.length / maxPlayers;
-
-    // กรอบเปล่า
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
-    ctx.beginPath();
-    ctx.roundRect(barX, barY, barWidth, barHeight, 4);
-    ctx.fill();
-
-    // หลอดพลัง
-    if (progressRatio > 0) {
-        ctx.shadowColor = themeColor;
-        ctx.shadowBlur = 15;
-        ctx.fillStyle = themeColor;
+    // 6. วาดเส้นเฉียงตกแต่งข้างแผงเวลา (Slanted dashes)
+    ctx.strokeStyle = themeColor;
+    ctx.lineWidth = 2;
+    const dashY = tbY + 18;
+    // ฝั่งซ้าย (\\\\)
+    for (let j = 0; j < 4; j++) {
+        const dx = tbX - 45 + j * 8;
         ctx.beginPath();
-        ctx.roundRect(barX, barY, barWidth * progressRatio, barHeight, 4);
-        ctx.fill();
-        ctx.shadowBlur = 0;
+        ctx.moveTo(dx, dashY + 12);
+        ctx.lineTo(dx + 6, dashY - 2);
+        ctx.stroke();
     }
-    
-    ctx.fillStyle = '#FFFFFF';
-    ctx.font = 'bold 16px "Noto Sans Thai", sans-serif';
-    ctx.fillText(`${playersArray.length} / ${maxPlayers} PLAYERS`, width / 2, 192);
+    // ฝั่งขวา (////)
+    for (let j = 0; j < 4; j++) {
+        const dx = tbX + tbW + 15 + j * 8;
+        ctx.beginPath();
+        ctx.moveTo(dx, dashY - 2);
+        ctx.lineTo(dx + 6, dashY + 12);
+        ctx.stroke();
+    }
 
-    // 4. วาดช่องโปรไฟล์ (Avatar)
-    const circleRadius = 45;
-    const gap = 35;
-    const totalWidth = (maxPlayers * (circleRadius * 2)) + ((maxPlayers - 1) * gap);
-    let startX = (width - totalWidth) / 2 + circleRadius;
-    const startY = 265;
+    // 7. วาดการ์ดผู้เล่นแนวตั้งสไตล์ Sci-Fi (Lobby Player Cards)
+    const cardWidth = 106;
+    const cardHeight = 160;
+    const gap = 16;
+    const totalCardsWidth = (maxPlayers * cardWidth) + ((maxPlayers - 1) * gap);
+    const startX = (width - totalCardsWidth) / 2;
+    const cardY = 225;
+
+    // ฟังก์ชันวาดเส้นการ์ดตัดมุม
+    function drawCardOutline(context, x, y, w, h) {
+        context.beginPath();
+        context.moveTo(x + 10, y);
+        context.lineTo(x + w, y);
+        context.lineTo(x + w, y + h - 10);
+        context.lineTo(x + w - 10, y + h);
+        context.lineTo(x, y + h);
+        context.lineTo(x, y + 10);
+        context.closePath();
+    }
 
     for (let i = 0; i < maxPlayers; i++) {
-        // Drop shadow สำหรับรูปคน
-        ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
-        ctx.shadowBlur = 10;
-        ctx.shadowOffsetY = 5;
-
-        // กรอบวงกลม
-        ctx.beginPath();
-        ctx.arc(startX, startY, circleRadius, 0, Math.PI * 2, true);
-        ctx.closePath();
-        ctx.lineWidth = 4;
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
-        ctx.stroke();
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.05)';
-        ctx.fill();
-        ctx.shadowBlur = 0;
-        ctx.shadowOffsetY = 0;
+        const cardX = startX + i * (cardWidth + gap);
 
         if (i < playersArray.length) {
             const p = playersArray[i];
-            try {
-                if (p.avatarUrl) {
+
+            // วาดตัวการ์ดแบบผู้เล่นเข้าร่วมแล้ว
+            ctx.fillStyle = 'rgba(15, 17, 21, 0.85)';
+            drawCardOutline(ctx, cardX, cardY, cardWidth, cardHeight);
+            ctx.fill();
+            
+            ctx.lineWidth = 1.5;
+            ctx.strokeStyle = themeColor;
+            ctx.stroke();
+
+            // อวาตาร์ผู้เล่น
+            const avatarRadius = 26;
+            const avatarX = cardX + (cardWidth / 2);
+            const avatarY = cardY + 58;
+
+            ctx.beginPath();
+            ctx.arc(avatarX, avatarY, avatarRadius, 0, Math.PI * 2);
+            ctx.strokeStyle = themeColor;
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            if (p.avatarUrl) {
+                try {
                     const avatar = await loadImage(p.avatarUrl);
                     ctx.save();
                     ctx.beginPath();
-                    ctx.arc(startX, startY, circleRadius - 2, 0, Math.PI * 2, true);
-                    ctx.closePath();
+                    ctx.arc(avatarX, avatarY, avatarRadius - 1.5, 0, Math.PI * 2);
                     ctx.clip();
-                    ctx.drawImage(avatar, startX - circleRadius + 2, startY - circleRadius + 2, (circleRadius - 2) * 2, (circleRadius - 2) * 2);
+                    ctx.drawImage(avatar, avatarX - avatarRadius + 1.5, avatarY - avatarRadius + 1.5, (avatarRadius - 1.5) * 2, (avatarRadius - 1.5) * 2);
                     ctx.restore();
-                    
-                    // เส้นขอบสีตามสถานะ
-                    ctx.beginPath();
-                    ctx.arc(startX, startY, circleRadius, 0, Math.PI * 2, true);
-                    ctx.strokeStyle = themeColor;
-                    ctx.stroke();
+                } catch (err) {
+                    console.error('ไม่สามารถโหลดรูปโปรไฟล์การ์ดได้', err);
                 }
-            } catch (err) {
-                console.error('ไม่สามารถโหลดรูปลง Canvas', err);
             }
-            
-            // ชื่อ Discord ใต้รูป
-            ctx.fillStyle = '#FFFFFF';
-            ctx.font = 'bold 14px "Noto Sans Thai", sans-serif';
-            ctx.textAlign = 'center';
-            let shortName = p.name ? (p.name.length > 10 ? p.name.substring(0,8)+'..' : p.name) : 'Player';
-            ctx.fillText(shortName, startX, startY + circleRadius + 20);
 
-            // HOST Badge
+            // HOST Label
             if (i === 0) {
-                ctx.fillStyle = '#F39C12';
-                ctx.fillRect(startX - 25, startY - circleRadius - 15, 50, 18);
-                ctx.fillStyle = '#000000';
-                ctx.font = 'bold 12px "Noto Sans Thai", sans-serif';
-                ctx.fillText('HOST', startX, startY - circleRadius - 2);
+                ctx.fillStyle = themeColor;
+                ctx.font = 'bold 11px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText('HOST', cardX + (cardWidth / 2), cardY + 23);
             }
 
-            // Role Icon สำหรับ Valorant
-            if (p.role && isValorant) {
+            // ไอคอนตำแหน่งที่มุมขวาล่างของวงกลม
+            if (isValorant && p.role) {
                 const roleColor = ROLE_COLORS[p.role] || '#FFFFFF';
                 const roleImg = await getRoleIcon(p.role);
                 
-                // วาดวงกลมเล็กๆ มุมขวาล่าง
-                const iconX = startX + 30;
-                const iconY = startY + 30;
+                const iconX = avatarX + 17;
+                const iconY = avatarY + 17;
+                
                 ctx.beginPath();
-                ctx.arc(iconX, iconY, 15, 0, Math.PI * 2);
+                ctx.arc(iconX, iconY, 11, 0, Math.PI * 2);
                 ctx.fillStyle = '#0F1115';
                 ctx.fill();
-                ctx.lineWidth = 2;
+                ctx.lineWidth = 1.5;
                 ctx.strokeStyle = roleColor;
                 ctx.stroke();
 
                 if (roleImg) {
-                    // วาดไอคอนบทบาทลงในวงกลม
-                    const imgSize = 20;
-                    ctx.drawImage(roleImg, iconX - (imgSize / 2), iconY - (imgSize / 2), imgSize, imgSize);
+                    ctx.drawImage(roleImg, iconX - 7, iconY - 7, 14, 14);
                 } else {
-                    // Fallback เป็นตัวหนังสือตัวแรกถ้าโหลดรูปไม่ขึ้น
                     ctx.fillStyle = '#FFFFFF';
-                    ctx.font = 'bold 14px sans-serif';
-                    ctx.fillText(p.role[0], iconX, iconY + 5);
+                    ctx.font = 'bold 10px sans-serif';
+                    ctx.fillText(p.role[0], iconX, iconY + 3.5);
                 }
             }
 
-        } else {
-            // สล็อตว่าง
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
-            ctx.font = 'bold 36px "Noto Sans Thai", sans-serif';
+            // ชื่อผู้เล่น
+            ctx.fillStyle = '#FFFFFF';
+            ctx.font = 'bold 12px "Noto Sans Thai", sans-serif';
             ctx.textAlign = 'center';
-            ctx.fillText('+', startX, startY + 12);
+            let shortName = p.name ? (p.name.length > 12 ? p.name.substring(0,10)+'..' : p.name) : 'Player';
+            ctx.fillText(shortName, cardX + (cardWidth / 2), cardY + 118);
+
+        } else {
+            // สล็อตว่าง (Dashed Empty Card)
+            ctx.fillStyle = 'rgba(15, 17, 21, 0.4)';
+            drawCardOutline(ctx, cardX, cardY, cardWidth, cardHeight);
+            ctx.fill();
+            
+            ctx.lineWidth = 1.5;
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
+            ctx.setLineDash([4, 4]);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // เครื่องหมายบวกตรงกลางการ์ดว่าง
+            const centerX = cardX + (cardWidth / 2);
+            const centerY = cardY + (cardHeight / 2);
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+            ctx.lineWidth = 2.5;
+            ctx.beginPath();
+            ctx.moveTo(centerX - 8, centerY);
+            ctx.lineTo(centerX + 8, centerY);
+            ctx.moveTo(centerX, centerY - 8);
+            ctx.lineTo(centerX, centerY + 8);
+            ctx.stroke();
         }
-
-        startX += (circleRadius * 2) + gap;
     }
-    
-    // 5. แสดงตัวสำรอง (Standbys)
-    if (standbysArray && standbysArray.length > 0) {
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
-        ctx.font = 'bold 14px "Noto Sans Thai", sans-serif';
-        ctx.textAlign = 'left';
-        ctx.fillText('WAITLIST:', 40, 410);
 
-        let stX = 130;
-        const stY = 405;
-        const stRadius = 15;
+    // 8. ส่วนท้ายแบนเนอร์ (Footer Text)
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+    ctx.font = 'bold 11px sans-serif';
+    ctx.textAlign = 'center';
+    const footerMsg = playersArray.length < maxPlayers ? '▪  WAITING FOR PLAYERS  ▪' : '▪  LOBBY FULL / MATCH STARTING  ▪';
+    ctx.fillText(footerMsg, width / 2, 408);
+
+    // 9. แสดงตัวสำรอง (Standbys)
+    if (standbysArray && standbysArray.length > 0) {
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+        ctx.font = 'bold 12px "Noto Sans Thai", sans-serif';
+        ctx.textAlign = 'left';
+        ctx.fillText('WAITLIST:', 40, 432);
+
+        let stX = 120;
+        const stY = 427;
+        const stRadius = 13;
         
-        for (let i = 0; i < standbysArray.length && i < 10; i++) {
+        for (let i = 0; i < standbysArray.length && i < 15; i++) {
             const sb = standbysArray[i];
-            ctx.globalAlpha = 0.5; // โปร่งแสง
+            ctx.globalAlpha = 0.5;
             ctx.beginPath();
             ctx.arc(stX, stY, stRadius, 0, Math.PI * 2, true);
             ctx.fillStyle = '#444';
@@ -317,13 +352,13 @@ async function generatePartyImage(game, time, maxPlayers, playersArray, standbys
             } catch (err) {}
             
             ctx.globalAlpha = 1.0;
-            stX += (stRadius * 2) + 10;
+            stX += (stRadius * 2) + 8;
         }
         
-        if (standbysArray.length > 10) {
+        if (standbysArray.length > 15) {
             ctx.fillStyle = '#FFFFFF';
-            ctx.font = 'bold 12px "Noto Sans Thai", sans-serif';
-            ctx.fillText(`+${standbysArray.length - 10}`, stX + 5, stY + 5);
+            ctx.font = 'bold 10px sans-serif';
+            ctx.fillText(`+${standbysArray.length - 15}`, stX + 5, stY + 4);
         }
     }
 
