@@ -83,16 +83,15 @@ function scheduleJob(message, timeStr) {
                     memberList = mentions.map((m, idx) => `${idx + 1}. ${m}`).join('\n');
                 }
 
-                // สร้าง Embed แจ้งเตือนระดับพรีเมียม
+                // สร้าง Embed แจ้งเตือน
                 const alertEmbed = new EmbedBuilder()
-                    .setTitle(isFinal ? '🚨 LOBBY MATCH ACTIVE / เริ่มเกม!' : '⏳ LOBBY REMINDER / ใกล้ถึงเวลา!')
+                    .setTitle(isFinal ? '🚨 แจ้งเตือน: ได้เวลาเริ่มเกมแล้ว' : '⏳ แจ้งเตือน: อีก 15 นาทีจะเริ่มเกม')
                     .setDescription(
-                        `ปาร์ตี้เกม **${gameName}** ${isFinal ? 'ถึงเวลาเริ่มเกมแล้ว ลุยเลย! 🚀' : 'จะเริ่มในอีก 15 นาทีครับ!'}\n\n` +
-                        `⚔️ **รายชื่อนักรบในทีม:**\n${memberList}\n` +
-                        `ขอให้สมาชิกทุกคนเตรียมตัว ล็อกอินเข้าเกมและสแตนด์บายได้เลย! 🎮`
+                        `ปาร์ตี้เกม: **${gameName}**\n\n` +
+                        `👥 **รายชื่อสมาชิกในปาร์ตี้:**\n${memberList}\n` +
+                        `เตรียมเข้าเกมและสแตนด์บายได้เลยครับ`
                     )
-                    .setColor(themeColor)
-                    .setTimestamp();
+                    .setColor(themeColor);
 
                 // ส่งแบบแท็กนอก Embed เพื่อให้มีระบบการแจ้งเตือนดังไปยังอุปกรณ์ของผู้ใช้
                 await message.channel.send({
