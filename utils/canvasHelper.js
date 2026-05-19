@@ -26,14 +26,16 @@ const ROLE_COLORS = {
     'Duelist': '#FF4655',
     'Initiator': '#B8B28D',
     'Controller': '#4ECCA3',
-    'Sentinel': '#F39C12'
+    'Sentinel': '#F39C12',
+    'Flex': '#9B59B6'
 };
 
 const ROLE_LETTERS = {
     'Duelist': 'D',
     'Initiator': 'I',
     'Controller': 'C',
-    'Sentinel': 'S'
+    'Sentinel': 'S',
+    'Flex': 'F'
 };
 
 async function generatePartyImage(game, time, maxPlayers, playersArray, standbysArray) {

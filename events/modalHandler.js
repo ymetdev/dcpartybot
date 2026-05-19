@@ -187,7 +187,8 @@ async function handleModalInteraction(interaction) {
                     { label: 'Duelist', value: 'Duelist', emoji: '⚔️' },
                     { label: 'Initiator', value: 'Initiator', emoji: '👁️' },
                     { label: 'Controller', value: 'Controller', emoji: '💨' },
-                    { label: 'Sentinel', value: 'Sentinel', emoji: '🛡️' }
+                    { label: 'Sentinel', value: 'Sentinel', emoji: '🛡️' },
+                    { label: 'Flex', value: 'Flex', emoji: '🔄' }
                 ]);
             const roleRow = new ActionRowBuilder().addComponents(selectMenu);
             // ให้ Host เลือกผ่านข้อความ ephemeral ที่ตามมา

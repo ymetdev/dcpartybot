@@ -109,7 +109,8 @@ async function handleButtonInteraction(interaction) {
                     { label: 'Duelist', value: 'Duelist', emoji: '⚔️' },
                     { label: 'Initiator', value: 'Initiator', emoji: '👁️' },
                     { label: 'Controller', value: 'Controller', emoji: '💨' },
-                    { label: 'Sentinel', value: 'Sentinel', emoji: '🛡️' }
+                    { label: 'Sentinel', value: 'Sentinel', emoji: '🛡️' },
+                    { label: 'Flex', value: 'Flex', emoji: '🔄' }
                 ]);
             
             const row = new ActionRowBuilder().addComponents(selectMenu);
