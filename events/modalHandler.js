@@ -184,10 +184,10 @@ async function handleModalInteraction(interaction) {
                 .setCustomId('select_role')
                 .setPlaceholder('เลือกตำแหน่งที่คุณจะเล่น (Host)')
                 .addOptions([
-                    { label: 'Duelist', description: 'สายลุยทำดาเมจ', value: 'Duelist', emoji: '⚔️' },
-                    { label: 'Initiator', description: 'สายเปิดวิสัยทัศน์', value: 'Initiator', emoji: '👁️' },
-                    { label: 'Controller', description: 'สายควันควบคุมพื้นที่', value: 'Controller', emoji: '💨' },
-                    { label: 'Sentinel', description: 'สายป้องกันหลังบ้าน', value: 'Sentinel', emoji: '🛡️' }
+                    { label: 'Duelist', value: 'Duelist', emoji: '⚔️' },
+                    { label: 'Initiator', value: 'Initiator', emoji: '👁️' },
+                    { label: 'Controller', value: 'Controller', emoji: '💨' },
+                    { label: 'Sentinel', value: 'Sentinel', emoji: '🛡️' }
                 ]);
             const roleRow = new ActionRowBuilder().addComponents(selectMenu);
             // ให้ Host เลือกผ่านข้อความ ephemeral ที่ตามมา

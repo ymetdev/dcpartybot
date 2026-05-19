@@ -106,10 +106,10 @@ async function handleButtonInteraction(interaction) {
                 .setCustomId('select_role')
                 .setPlaceholder('เลือกตำแหน่งที่คุณจะเล่น')
                 .addOptions([
-                    { label: 'Duelist', description: 'สายลุยทำดาเมจ', value: 'Duelist', emoji: '⚔️' },
-                    { label: 'Initiator', description: 'สายเปิดวิสัยทัศน์', value: 'Initiator', emoji: '👁️' },
-                    { label: 'Controller', description: 'สายควันควบคุมพื้นที่', value: 'Controller', emoji: '💨' },
-                    { label: 'Sentinel', description: 'สายป้องกันหลังบ้าน', value: 'Sentinel', emoji: '🛡️' }
+                    { label: 'Duelist', value: 'Duelist', emoji: '⚔️' },
+                    { label: 'Initiator', value: 'Initiator', emoji: '👁️' },
+                    { label: 'Controller', value: 'Controller', emoji: '💨' },
+                    { label: 'Sentinel', value: 'Sentinel', emoji: '🛡️' }
                 ]);
             
             const row = new ActionRowBuilder().addComponents(selectMenu);
