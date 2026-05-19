@@ -92,15 +92,41 @@ async function generatePartyImage(game, time, maxPlayers, playersArray, standbys
     ctx.fillText(`${game}`, width / 2, 70);
     ctx.shadowBlur = 0; // Reset shadow
 
-    ctx.fillStyle = '#C0C0C0';
-    ctx.font = '22px "Noto Sans Thai", sans-serif';
-    ctx.fillText(`เวลา: ${time}`, width / 2, 105);
+    // 2.2 วาดแผงเวลาดิจิตอล (Digital Time Board)
+    const timeBoardWidth = 260;
+    const timeBoardHeight = 52;
+    const timeBoardX = (width - timeBoardWidth) / 2;
+    const timeBoardY = 92;
+
+    // พื้นหลังแผงเวลาสีเข้ม
+    ctx.fillStyle = 'rgba(10, 12, 16, 0.85)';
+    ctx.beginPath();
+    ctx.roundRect(timeBoardX, timeBoardY, timeBoardWidth, timeBoardHeight, 8);
+    ctx.fill();
+    
+    // เส้นขอบนีออนของแผงเวลา
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = themeColor;
+    ctx.shadowColor = themeColor;
+    ctx.shadowBlur = 8;
+    ctx.stroke();
+    ctx.shadowBlur = 0; // reset
+
+    // ตัวหนังสือ "START TIME" ตัวเล็กด้านบนแผง
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+    ctx.font = 'bold 11px sans-serif';
+    ctx.fillText('MATCH START TIME', width / 2, timeBoardY + 18);
+
+    // ตัวเลขเวลาขนาดใหญ่เน้นๆ
+    ctx.fillStyle = '#FFFFFF';
+    ctx.font = 'bold 24px "Noto Sans Thai", sans-serif';
+    ctx.fillText(`🕒 ${time} น.`, width / 2, timeBoardY + 43);
 
     // 3. Neon Progress Bar
     const barWidth = 400;
     const barHeight = 8;
     const barX = (width - barWidth) / 2;
-    const barY = 135;
+    const barY = 162;
     const progressRatio = playersArray.length / maxPlayers;
 
     // กรอบเปล่า
@@ -122,14 +148,14 @@ async function generatePartyImage(game, time, maxPlayers, playersArray, standbys
     
     ctx.fillStyle = '#FFFFFF';
     ctx.font = 'bold 16px "Noto Sans Thai", sans-serif';
-    ctx.fillText(`${playersArray.length} / ${maxPlayers} PLAYERS`, width / 2, 165);
+    ctx.fillText(`${playersArray.length} / ${maxPlayers} PLAYERS`, width / 2, 192);
 
     // 4. วาดช่องโปรไฟล์ (Avatar)
     const circleRadius = 45;
     const gap = 35;
     const totalWidth = (maxPlayers * (circleRadius * 2)) + ((maxPlayers - 1) * gap);
     let startX = (width - totalWidth) / 2 + circleRadius;
-    const startY = 250;
+    const startY = 265;
 
     for (let i = 0; i < maxPlayers; i++) {
         // Drop shadow สำหรับรูปคน
