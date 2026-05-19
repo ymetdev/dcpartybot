@@ -1,4 +1,13 @@
-const { createCanvas, loadImage } = require('canvas');
+const { createCanvas, loadImage, registerFont } = require('canvas');
+const path = require('path');
+
+// ฝังฟอนต์ภาษาไทยเพื่อแก้ปัญหากรอบสี่เหลี่ยมบน Linux (Render)
+try {
+    registerFont(path.join(__dirname, '../assets/fonts/NotoSansThai-Regular.ttf'), { family: 'Noto Sans Thai' });
+    registerFont(path.join(__dirname, '../assets/fonts/NotoSansThai-Bold.ttf'), { family: 'Noto Sans Thai', weight: 'bold' });
+} catch (e) {
+    console.error('ไม่สามารถโหลดฟอนต์ภาษาไทยได้', e);
+}
 
 async function generatePartyImage(game, time, maxPlayers, playersArray, standbysArray) {
     const width = 800;
@@ -16,12 +25,13 @@ async function generatePartyImage(game, time, maxPlayers, playersArray, standbys
 
     // 2. ตัวหนังสือ
     ctx.fillStyle = '#FFFFFF';
-    ctx.font = 'bold 40px sans-serif';
+    ctx.font = 'bold 40px "Noto Sans Thai", sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText(`🎮 ${game}`, width / 2, 70);
+    // เอา Emoji 🎮 ออกเพราะบน Linux อาจจะกลายเป็นสี่เหลี่ยม
+    ctx.fillText(`${game}`, width / 2, 70);
 
     ctx.fillStyle = '#A0A0A0';
-    ctx.font = '24px sans-serif';
+    ctx.font = '24px "Noto Sans Thai", sans-serif';
     ctx.fillText(`เวลา: ${time} | จำนวน: ${playersArray.length}/${maxPlayers}`, width / 2, 110);
 
     // 3. วาดช่องโปรไฟล์ (Avatar)
@@ -63,15 +73,16 @@ async function generatePartyImage(game, time, maxPlayers, playersArray, standbys
                 console.error('ไม่สามารถโหลดรูปลง Canvas', err);
             }
             
-            // มงกุฎสำหรับโฮสต์
+            // แทนที่จะใช้มงกุฎ (Crown Emoji) ใช้คำว่า HOST แทน
             if (i === 0) {
-                ctx.font = '24px sans-serif';
-                ctx.fillText('👑', startX, startY - circleRadius - 10);
+                ctx.fillStyle = '#F39C12';
+                ctx.font = 'bold 16px "Noto Sans Thai", sans-serif';
+                ctx.fillText('HOST', startX, startY - circleRadius - 10);
             }
         } else {
             // สล็อตว่าง
             ctx.fillStyle = '#333333';
-            ctx.font = 'bold 30px sans-serif';
+            ctx.font = 'bold 30px "Noto Sans Thai", sans-serif';
             ctx.fillText('+', startX, startY + 10);
         }
 
@@ -81,7 +92,7 @@ async function generatePartyImage(game, time, maxPlayers, playersArray, standbys
     // 4. แสดงตัวสำรอง
     if (standbysArray && standbysArray.length > 0) {
         ctx.fillStyle = '#A0A0A0';
-        ctx.font = '18px sans-serif';
+        ctx.font = '18px "Noto Sans Thai", sans-serif';
         ctx.fillText(`+ คิวตัวสำรอง: ${standbysArray.length} คน`, width / 2, 350);
     }
 
