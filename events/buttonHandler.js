@@ -112,8 +112,29 @@ async function handleButtonInteraction(interaction) {
     }
 
     if (customId === 'btn_join') {
-        if (inPlayers || inStandbys) {
-            await interaction.reply({ content: 'คุณอยู่ในปาร์ตี้ (หรือคิวตัวสำรอง) อยู่แล้ว!', ephemeral: true });
+        if (inPlayers) {
+            if (isValorant) {
+                const selectMenu = new StringSelectMenuBuilder()
+                    .setCustomId(`select_role_${message.id}`)
+                    .setPlaceholder('เลือกตำแหน่งที่คุณต้องการเปลี่ยน')
+                    .addOptions([
+                        { label: 'Duelist', value: 'Duelist', emoji: '⚔️' },
+                        { label: 'Initiator', value: 'Initiator', emoji: '👁️' },
+                        { label: 'Controller', value: 'Controller', emoji: '💨' },
+                        { label: 'Sentinel', value: 'Sentinel', emoji: '🛡️' },
+                        { label: 'Flex', value: 'Flex', emoji: '🔄' }
+                    ]);
+                const row = new ActionRowBuilder().addComponents(selectMenu);
+                await interaction.reply({ content: 'เปลี่ยนตำแหน่งการเล่นของคุณ:', components: [row], ephemeral: true });
+                return;
+            } else {
+                await interaction.reply({ content: 'คุณอยู่ในปาร์ตี้นี้อยู่แล้ว!', ephemeral: true });
+                return;
+            }
+        }
+
+        if (inStandbys) {
+            await interaction.reply({ content: 'คุณอยู่ในคิวตัวสำรองอยู่แล้ว!', ephemeral: true });
             return;
         }
 
