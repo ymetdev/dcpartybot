@@ -35,8 +35,10 @@ if (fs.existsSync(commandsPath)) {
     }
 }
 
-client.once(Events.ClientReady, c => {
+client.once(Events.ClientReady, async c => {
     console.log(`✅ พร้อมทำงานแล้ว! ล็อกอินในชื่อ ${c.user.tag}`);
+    const { restoreJobs } = require('./scheduler');
+    await restoreJobs(c);
 });
 
 client.on(Events.InteractionCreate, async interaction => {
@@ -73,12 +75,10 @@ client.on(Events.InteractionCreate, async interaction => {
         }
     } else if (interaction.isAutocomplete()) {
         if (interaction.commandName === 'schedule') {
-            const focusedValue = interaction.options.getFocused();
-            const choices = ['Valorant', 'Minecraft'];
-            const filtered = choices.filter(choice => choice.toLowerCase().includes(focusedValue.toLowerCase()));
-            await interaction.respond(
-                filtered.map(choice => ({ name: choice, value: choice }))
-            );
+            const { GAMES } = require('./config/games');
+            const focusedValue = interaction.options.getFocused().toLowerCase();
+            const filtered = GAMES.filter(g => g.name.toLowerCase().includes(focusedValue));
+            await interaction.respond(filtered.map(g => ({ name: g.name, value: g.name })));
         }
     }
 });

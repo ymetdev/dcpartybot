@@ -1,273 +1,73 @@
-const { EmbedBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, AttachmentBuilder, StringSelectMenuBuilder } = require('discord.js');
+const { EmbedBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, AttachmentBuilder, StringSelectMenuBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { generatePartyImage } = require('../utils/canvasHelper');
+const { getGameConfig } = require('../config/games');
 
-async function handleButtonInteraction(interaction) {
-    const customId = interaction.customId;
-    const isSelectRole = customId === 'select_role' || customId.startsWith('select_role_');
-    if (!['btn_join', 'btn_leave', 'btn_cancel', 'btn_edit_time'].includes(customId) && !isSelectRole) return;
+const processingMessages = new Set();
 
-    let message;
-    if (customId.startsWith('select_role_')) {
-        const targetMessageId = customId.replace('select_role_', '');
-        try {
-            message = await interaction.channel.messages.fetch(targetMessageId);
-        } catch (e) {
-            console.error('ไม่สามารถดึงข้อความหลักได้:', e);
-            await interaction.reply({ content: '❌ ไม่พบข้อความปาร์ตี้เดิม หรือข้อความถูกลบไปแล้ว', ephemeral: true });
-            return;
-        }
-    } else {
-        message = interaction.message;
-    }
+// ─── Description parser ───────────────────────────────────────────────────────
+// Format: 🕐 time | 👑 <@host> | 📝 details | **ผู้เล่น N/M** | player lines | **ตัวสำรอง** | standby lines
 
-    const embed = message ? message.embeds[0] : null;
-    const userId = interaction.user.id;
+function _parsePlayersFromEmbed(description) {
+    let timeStr = '', hostStr = '', detailsStr = '';
+    let maxPlayers = 0, players = [], standbys = [];
+    let mode = 'header';
 
-    if (!embed) return;
-
-    let timeStr = "";
-    let hostStr = "";
-    let detailsStr = "";
-    let currentCount = 0;
-    let maxPlayers = 0;
-    let players = [];
-    let standbys = [];
-
-    const lines = embed.description.split('\n');
-    let mode = 'header'; 
-
-    for (let line of lines) {
+    for (let line of description.split('\n')) {
         line = line.trim();
         if (!line) continue;
-
-        if (line.startsWith('**เวลา:**')) {
-            timeStr = line.replace('**เวลา:**', '').trim();
-        } else if (line.startsWith('**รายละเอียด:**')) {
-            detailsStr = line;
-        } else if (line.startsWith('**ปาร์ตี้โดย:**')) {
+        if (line.startsWith('🕐 ')) {
+            timeStr = line.replace('🕐 ', '').trim();
+        } else if (line.startsWith('👑 ')) {
             hostStr = line;
-        } else if (line.startsWith('**รายชื่อผู้เข้าร่วม')) {
+        } else if (line.startsWith('📝 ')) {
+            detailsStr = line;
+        } else if (line.startsWith('**ผู้เล่น')) {
             mode = 'players';
-            const match = line.match(/\((\d+)\/(\d+)\)/);
-            if (match) {
-                currentCount = parseInt(match[1]);
-                maxPlayers = parseInt(match[2]);
-            }
-        } else if (line.startsWith('**ตัวสำรอง:**')) {
+            const m = line.match(/(\d+)\/(\d+)/);
+            if (m) maxPlayers = parseInt(m[2]);
+        } else if (line.startsWith('**ตัวสำรอง')) {
             mode = 'standbys';
-        } else if (mode === 'players') {
+        } else if (mode === 'players' && /^\d+\./.test(line)) {
             players.push(line);
-        } else if (mode === 'standbys') {
+        } else if (mode === 'standbys' && /^\d+\./.test(line)) {
             standbys.push(line);
         }
     }
+    return { timeStr, hostStr, detailsStr, maxPlayers, players, standbys };
+}
 
-    const userMention = `<@${userId}>`;
-    const isHost = players.length > 0 && players[0].includes(userMention);
-    const inPlayers = players.some(p => p.includes(userMention));
-    const inStandbys = standbys.some(s => s.includes(userMention));
-    
-    const gameName = embed.title.replace('🎮 ', '').trim();
-    const isValorant = gameName.toLowerCase().includes('valorant') || gameName.includes('วาโล');
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
-    if (customId === 'btn_cancel' || customId === 'btn_edit_time') {
-        if (!isHost) {
-            await interaction.reply({ content: 'คุณไม่ใช่หัวห้อง (Host) จึงไม่สามารถใช้คำสั่งนี้ได้', ephemeral: true });
-            return;
-        }
+function _buildRoleMenu(customId, placeholder, game) {
+    return new StringSelectMenuBuilder().setCustomId(customId).setPlaceholder(placeholder).addOptions(game.roles);
+}
 
-        if (customId === 'btn_cancel') {
-            const newEmbed = EmbedBuilder.from(embed)
-                .setColor(0xFF0000)
-                .setTitle('❌ ' + embed.title.replace('🎮 ', ''))
-                .setDescription('**ปาร์ตี้นี้ถูกยกเลิกแล้ว**\n\n' + embed.description)
-                .setImage(null);
-            
-            await message.edit({ embeds: [newEmbed], components: [], attachments: [] });
-            await interaction.reply({ content: 'ยกเลิกปาร์ตี้เรียบร้อยแล้ว', ephemeral: true });
-            
-            const { cancelJob } = require('../scheduler');
-            cancelJob(message.id);
-            return;
-        }
+async function _tryDM(client, userId, content) {
+    try { const u = await client.users.fetch(userId); await u.send(content); } catch (e) {}
+}
 
-        if (customId === 'btn_edit_time') {
-            const modal = new ModalBuilder()
-                .setCustomId('modal_edit_time')
-                .setTitle('เลื่อนเวลาปาร์ตี้ (HH:MM)');
-
-            const timeInput = new TextInputBuilder()
-                .setCustomId('input_time')
-                .setLabel('เวลาใหม่ที่ต้องการนัด (เช่น 20:30)')
-                .setStyle(TextInputStyle.Short)
-                .setPlaceholder('ต้องเป็น HH:MM เท่านั้น')
-                .setRequired(true);
-
-            const firstActionRow = new ActionRowBuilder().addComponents(timeInput);
-            modal.addComponents(firstActionRow);
-
-            await interaction.showModal(modal);
-            return;
-        }
-    }
-
-    if (customId === 'btn_join') {
-        if (inPlayers) {
-            if (isValorant) {
-                const selectMenu = new StringSelectMenuBuilder()
-                    .setCustomId(`select_role_${message.id}`)
-                    .setPlaceholder('เลือกตำแหน่งที่คุณต้องการเปลี่ยน')
-                    .addOptions([
-                        { label: 'Duelist', value: 'Duelist', emoji: '⚔️' },
-                        { label: 'Initiator', value: 'Initiator', emoji: '👁️' },
-                        { label: 'Controller', value: 'Controller', emoji: '💨' },
-                        { label: 'Sentinel', value: 'Sentinel', emoji: '🛡️' },
-                        { label: 'Flex', value: 'Flex', emoji: '🔄' }
-                    ]);
-                const row = new ActionRowBuilder().addComponents(selectMenu);
-                await interaction.reply({ content: 'เปลี่ยนตำแหน่งการเล่นของคุณ:', components: [row], ephemeral: true });
-                return;
-            } else {
-                await interaction.reply({ content: 'คุณอยู่ในปาร์ตี้นี้อยู่แล้ว!', ephemeral: true });
-                return;
-            }
-        }
-
-        if (inStandbys) {
-            await interaction.reply({ content: 'คุณอยู่ในคิวตัวสำรองอยู่แล้ว!', ephemeral: true });
-            return;
-        }
-
-        // กรณีเป็น Valorant ให้เลือกตำแหน่งก่อน
-        if (isValorant && currentCount < maxPlayers) {
-            const selectMenu = new StringSelectMenuBuilder()
-                .setCustomId(`select_role_${message.id}`)
-                .setPlaceholder('เลือกตำแหน่งที่คุณจะเล่น')
-                .addOptions([
-                    { label: 'Duelist', value: 'Duelist', emoji: '⚔️' },
-                    { label: 'Initiator', value: 'Initiator', emoji: '👁️' },
-                    { label: 'Controller', value: 'Controller', emoji: '💨' },
-                    { label: 'Sentinel', value: 'Sentinel', emoji: '🛡️' },
-                    { label: 'Flex', value: 'Flex', emoji: '🔄' }
-                ]);
-            
-            const row = new ActionRowBuilder().addComponents(selectMenu);
-            await interaction.reply({ content: 'กรุณาเลือกตำแหน่งที่คุณต้องการเล่น:', components: [row], ephemeral: true });
-            return;
-        } else {
-            // ไม่ใช่ Valorant หรือ คิวเต็มแล้ว(ไปคิวสำรอง)
-            if (currentCount >= maxPlayers) {
-                standbys.push(`${standbys.length + 1}. ${userMention}`);
-                await interaction.reply({ content: 'ปาร์ตี้เต็มแล้ว คุณถูกจัดให้อยู่ในคิวตัวสำรอง!', ephemeral: true });
-            } else {
-                currentCount++;
-                players.push(`${currentCount}. ${userMention}`);
-                await interaction.reply({ content: 'คุณได้เข้าร่วมปาร์ตี้แล้ว!', ephemeral: true });
-            }
-        }
-    } else if (customId === 'select_role' || customId.startsWith('select_role_')) {
-        const role = interaction.values[0];
-        
-        if (inPlayers) {
-            // อัปเดตตำแหน่งของคนที่มีอยู่แล้ว (เช่น Host)
-            const index = players.findIndex(p => p.includes(userMention));
-            if (index !== -1) {
-                players[index] = `${index + 1}. ${userMention} [${role}]`;
-            }
-            await interaction.update({ content: `เลือกตำแหน่ง **${role}** เรียบร้อย!`, components: [] });
-        } else if (inStandbys) {
-            await interaction.update({ content: 'คุณอยู่ในคิวตัวสำรองแล้ว!', components: [] });
-            return;
-        } else {
-            // ผู้เล่นใหม่
-            if (currentCount >= maxPlayers) {
-                standbys.push(`${standbys.length + 1}. ${userMention}`);
-                await interaction.update({ content: 'ปาร์ตี้เต็มแล้ว คุณถูกจัดให้อยู่ในคิวตัวสำรอง!', components: [] });
-            } else {
-                currentCount++;
-                players.push(`${currentCount}. ${userMention} [${role}]`);
-                await interaction.update({ content: `คุณเข้าร่วมในตำแหน่ง **${role}** เรียบร้อย!`, components: [] });
-            }
-        }
-    } else if (customId === 'btn_leave') {
-        if (!inPlayers && !inStandbys) {
-            await interaction.reply({ content: 'คุณไม่ได้อยู่ในปาร์ตี้นี้แต่แรกนะ!', ephemeral: true });
-            return;
-        }
-
-        if (isHost) {
-            await interaction.reply({ content: 'คุณเป็นคนสร้างตี้ (Host) ไม่สามารถออกได้! (กดปุ่ม "ยุติ" แทนครับ)', ephemeral: true });
-            return;
-        }
-
-        if (inStandbys) {
-            standbys = standbys.filter(line => !line.includes(userMention));
-            await interaction.reply({ content: 'คุณออกจากคิวตัวสำรองแล้ว!', ephemeral: true });
-        } else if (inPlayers) {
-            players = players.filter(line => !line.includes(userMention));
-            currentCount--;
-            let msg = 'คุณได้ออกจากปาร์ตี้แล้ว!';
-
-            if (standbys.length > 0) {
-                const firstStandby = standbys.shift();
-                const standbyMatch = firstStandby.match(/<@\d+>/);
-                if (standbyMatch) {
-                    currentCount++;
-                    players.push(`${currentCount}. ${standbyMatch[0]}`);
-                    msg += `\nมีการดึงตัวสำรอง ${standbyMatch[0]} เข้ามาเป็นตัวจริงแทน`;
-                    await message.channel.send(`🔔 แจ้งเตือน: ${standbyMatch[0]} คุณได้เลื่อนเป็นตัวจริงในปาร์ตี้ **${embed.title.replace('🎮 ', '')}** แล้ว!`);
-                }
-            }
-            await interaction.reply({ content: msg, ephemeral: true });
-        }
-        
-        players = players.map((line, index) => {
-            const namePart = line.substring(line.indexOf('.') + 1).trim();
-            return `${index + 1}. ${namePart}`;
-        });
-        standbys = standbys.map((line, index) => {
-            const namePart = line.substring(line.indexOf('.') + 1).trim();
-            return `${index + 1}. ${namePart}`;
-        });
-    }
-
-    // เตรียมข้อมูลสำหรับวาด Canvas ใหม่
+async function _rebuildEmbed(interaction, gameName, game, timeStr, hostStr, detailsStr, maxPlayers, players, standbys, freshEmbed, freshMsg) {
     const playersArray = [];
     for (const pLine of players) {
-        // Extract ID and Role
         const match = pLine.match(/<@(\d+)>(?:\s+\[(.*?)\])?/);
         if (match) {
-            const uid = match[1];
-            const role = match[2] || null;
             try {
-                const user = await interaction.client.users.fetch(uid);
-                playersArray.push({
-                    id: uid,
-                    avatarUrl: user.displayAvatarURL({ extension: 'png', size: 128 }),
-                    name: user.username,
-                    role: role
-                });
+                const user = await interaction.client.users.fetch(match[1]);
+                playersArray.push({ id: match[1], avatarUrl: user.displayAvatarURL({ extension: 'png', size: 128 }), name: user.username, role: match[2] || null });
             } catch (e) {
-                playersArray.push({ id: uid, avatarUrl: null, name: 'Unknown', role: role });
+                playersArray.push({ id: match[1], avatarUrl: null, name: 'Unknown', role: match[2] || null });
             }
         }
     }
-    
-    // ดึงข้อมูลตัวสำรองสำหรับ Canvas
     const standbysArray = [];
     for (const sLine of standbys) {
         const match = sLine.match(/<@(\d+)>/);
         if (match) {
-            const uid = match[1];
             try {
-                const user = await interaction.client.users.fetch(uid);
-                standbysArray.push({
-                    id: uid,
-                    avatarUrl: user.displayAvatarURL({ extension: 'png', size: 128 }),
-                    name: user.username
-                });
+                const user = await interaction.client.users.fetch(match[1]);
+                standbysArray.push({ id: match[1], avatarUrl: user.displayAvatarURL({ extension: 'png', size: 128 }), name: user.username });
             } catch (e) {
-                standbysArray.push({ id: uid, avatarUrl: null, name: 'Unknown' });
+                standbysArray.push({ id: match[1], avatarUrl: null, name: 'Unknown' });
             }
         }
     }
@@ -276,21 +76,317 @@ async function handleButtonInteraction(interaction) {
     const buffer = await generatePartyImage(gameName, cleanTime, maxPlayers, playersArray, standbysArray);
     const attachment = new AttachmentBuilder(buffer, { name: 'party-banner.png' });
 
-    let newDesc = `**เวลา:** ${timeStr}\n${hostStr}\n`;
-    if (detailsStr) {
-        newDesc += `${detailsStr}\n`;
-    }
-    newDesc += `\n**รายชื่อผู้เข้าร่วม (${currentCount}/${maxPlayers}):**\n${players.join('\n')}`;
-    if (standbys.length > 0) {
-        newDesc += `\n\n**ตัวสำรอง:**\n${standbys.join('\n')}`;
+    let newDesc = `🕐 ${timeStr}\n${hostStr}\n`;
+    if (detailsStr) newDesc += `${detailsStr}\n`;
+    newDesc += `\n**ผู้เล่น  ${players.length}/${maxPlayers}**\n${players.join('\n')}`;
+    if (standbys.length > 0) newDesc += `\n\n**ตัวสำรอง**\n${standbys.join('\n')}`;
+
+    await freshMsg.edit({
+        embeds: [EmbedBuilder.from(freshEmbed).setDescription(newDesc).setImage('attachment://party-banner.png')],
+        files: [attachment],
+        attachments: []
+    });
+}
+
+// ─── Main handler ─────────────────────────────────────────────────────────────
+
+async function handleButtonInteraction(interaction) {
+    const customId = interaction.customId;
+    const isSelectRole = customId === 'select_role' || customId.startsWith('select_role_');
+    const isSelectKick = customId.startsWith('select_kick_');
+    const isSelectTransfer = customId.startsWith('select_transfer_');
+    const isCheckin = customId.startsWith('btn_checkin_');
+
+    if (!['btn_join', 'btn_leave', 'btn_cancel', 'btn_edit_time', 'btn_kick', 'btn_transfer'].includes(customId)
+        && !isSelectRole && !isSelectKick && !isSelectTransfer && !isCheckin) return;
+
+    // ── Check-in ──────────────────────────────────────────────────────────────
+    if (isCheckin) {
+        const partyMsgId = customId.replace('btn_checkin_', '');
+        const reminderEmbed = interaction.message.embeds[0];
+
+        if (!reminderEmbed || !reminderEmbed.description.includes(`<@${interaction.user.id}>`)) {
+            await interaction.reply({ content: '❌ คุณไม่ได้อยู่ในปาร์ตี้นี้', ephemeral: true });
+            return;
+        }
+
+        await interaction.deferUpdate();
+
+        const { recordCheckin } = require('../scheduler');
+        recordCheckin(partyMsgId, interaction.user.id);
+
+        // อัปเดต ⏳ → ✅ และ counter real-time
+        try {
+            let newDesc = reminderEmbed.description.replace(
+                `<@${interaction.user.id}> ⏳`,
+                `<@${interaction.user.id}> ✅`
+            );
+            const confirmedCount = (newDesc.match(/\d+\. <@\d+> ✅/g) || []).length;
+            newDesc = newDesc.replace(
+                /\*\*สถานะ \(\d+\/(\d+)\)\*\*/,
+                `**สถานะ (${confirmedCount}/$1)**`
+            );
+            await interaction.message.edit({ embeds: [EmbedBuilder.from(reminderEmbed).setDescription(newDesc)] });
+        } catch (e) {}
+
+        await interaction.followUp({ content: '✅ ยืนยันแล้ว! รอเริ่มได้เลย', ephemeral: true });
+        return;
     }
 
-    const newEmbed = EmbedBuilder.from(embed)
-        .setDescription(newDesc)
-        .setImage('attachment://party-banner.png');
+    // ── Fetch message ─────────────────────────────────────────────────────────
+    let message;
+    const selectPrefix =
+        customId.startsWith('select_role_') ? 'select_role_' :
+        customId.startsWith('select_kick_') ? 'select_kick_' :
+        customId.startsWith('select_transfer_') ? 'select_transfer_' : null;
 
-    // ลบรูปเก่า และใส่รูปใหม่
-    await message.edit({ embeds: [newEmbed], files: [attachment], attachments: [] });
+    if (selectPrefix) {
+        try {
+            message = await interaction.channel.messages.fetch(customId.replace(selectPrefix, ''));
+        } catch (e) {
+            await interaction.reply({ content: '❌ ไม่พบโพสต์ปาร์ตี้', ephemeral: true });
+            return;
+        }
+    } else {
+        message = interaction.message;
+    }
+
+    const embed = message?.embeds[0];
+    if (!embed) return;
+
+    const userId = interaction.user.id;
+    const userMention = `<@${userId}>`;
+    const gameName = embed.title.replace('🎮 ', '').trim();
+    const game = getGameConfig(gameName);
+
+    // ตรวจ Host จาก 👑 line
+    const hostMatch = embed.description.match(/👑 <@(\d+)>/);
+    const isHost = hostMatch ? hostMatch[1] === userId : false;
+
+    // ── Host-only (ก่อน lock) ─────────────────────────────────────────────────
+    if (['btn_cancel', 'btn_edit_time', 'btn_kick', 'btn_transfer'].includes(customId)) {
+        if (!isHost) {
+            await interaction.reply({ content: '❌ เฉพาะ Host เท่านั้น', ephemeral: true });
+            return;
+        }
+
+        if (customId === 'btn_cancel') {
+            const newEmbed = EmbedBuilder.from(embed)
+                .setColor(0xFF4444)
+                .setTitle('❌ ' + embed.title.replace('🎮 ', ''))
+                .setDescription('ปาร์ตี้นี้ถูกยกเลิกแล้ว')
+                .setImage(null);
+            await message.edit({ embeds: [newEmbed], components: [], attachments: [] });
+            await interaction.reply({ content: '✅ ยุติปาร์ตี้แล้ว', ephemeral: true });
+            const { cancelJob, getReminderMessageIds } = require('../scheduler');
+            for (const rid of getReminderMessageIds(message.id)) {
+                try { await (await message.channel.messages.fetch(rid)).delete(); } catch (e) {}
+            }
+            cancelJob(message.id);
+            return;
+        }
+
+        if (customId === 'btn_edit_time') {
+            const modal = new ModalBuilder().setCustomId('modal_edit_time').setTitle('เลื่อนเวลา');
+            modal.addComponents(new ActionRowBuilder().addComponents(
+                new TextInputBuilder().setCustomId('input_time').setLabel('เวลาใหม่ (HH:MM)').setStyle(TextInputStyle.Short).setPlaceholder('เช่น 21:00').setRequired(true)
+            ));
+            await interaction.showModal(modal);
+            return;
+        }
+
+        // btn_kick / btn_transfer — แสดง dropdown
+        await interaction.deferReply({ ephemeral: true });
+        const hostIdVal = hostMatch ? hostMatch[1] : null;
+        const options = [];
+        let inPlayerMode = false;
+        for (const line of embed.description.split('\n')) {
+            const t = line.trim();
+            if (t.startsWith('**ผู้เล่น')) { inPlayerMode = true; continue; }
+            if (t.startsWith('**') && !t.startsWith('**ผู้เล่น')) inPlayerMode = false;
+            if (inPlayerMode && /^\d+\./.test(t)) {
+                const m = t.match(/<@(\d+)>/);
+                if (m && m[1] !== hostIdVal) {
+                    try {
+                        const user = await interaction.client.users.fetch(m[1]);
+                        options.push({ label: user.username, value: m[1] });
+                    } catch (e) { options.push({ label: `User ${m[1]}`, value: m[1] }); }
+                }
+            }
+        }
+        if (options.length === 0) {
+            await interaction.editReply({ content: '❌ ไม่มีผู้เล่นอื่น' });
+            return;
+        }
+        const isKick = customId === 'btn_kick';
+        const menu = new StringSelectMenuBuilder()
+            .setCustomId(isKick ? `select_kick_${message.id}` : `select_transfer_${message.id}`)
+            .setPlaceholder(isKick ? 'เลือกผู้เล่นที่จะเตะออก' : 'เลือกผู้เล่นที่จะโอน Host ให้')
+            .addOptions(options);
+        await interaction.editReply({ components: [new ActionRowBuilder().addComponents(menu)] });
+        return;
+    }
+
+    // ── Lock ──────────────────────────────────────────────────────────────────
+    if (processingMessages.has(message.id)) {
+        await interaction.reply({ content: '⏳ กรุณารอสักครู่', ephemeral: true });
+        return;
+    }
+    processingMessages.add(message.id);
+
+    try {
+        const freshMsg = await interaction.channel.messages.fetch(message.id);
+        const freshEmbed = freshMsg?.embeds[0];
+        if (!freshEmbed || freshEmbed.title?.includes('❌')) {
+            await interaction.reply({ content: '❌ ปาร์ตี้ถูกยกเลิกแล้ว', ephemeral: true });
+            return;
+        }
+
+        let { timeStr, hostStr, detailsStr, maxPlayers, players, standbys } = _parsePlayersFromEmbed(freshEmbed.description);
+        const beforeCount = players.length;
+        const inPlayers = players.some(p => p.includes(userMention));
+        const inStandbys = standbys.some(s => s.includes(userMention));
+
+        // ── btn_join ──────────────────────────────────────────────────────────
+        if (customId === 'btn_join') {
+            if (inPlayers) {
+                if (game.hasRoles) {
+                    const menu = _buildRoleMenu(`select_role_${message.id}`, 'เปลี่ยนตำแหน่ง', game);
+                    await interaction.reply({ content: 'เลือกตำแหน่งใหม่:', components: [new ActionRowBuilder().addComponents(menu)], ephemeral: true });
+                } else {
+                    await interaction.reply({ content: '❌ คุณอยู่ในปาร์ตี้แล้ว', ephemeral: true });
+                }
+                return;
+            }
+            if (inStandbys) {
+                await interaction.reply({ content: '❌ คุณอยู่ในคิวสำรองแล้ว', ephemeral: true });
+                return;
+            }
+            if (game.hasRoles && players.length < maxPlayers) {
+                const menu = _buildRoleMenu(`select_role_${message.id}`, 'เลือกตำแหน่งที่จะเล่น', game);
+                await interaction.reply({ content: 'เลือกตำแหน่ง:', components: [new ActionRowBuilder().addComponents(menu)], ephemeral: true });
+                return;
+            }
+            if (players.length >= maxPlayers) {
+                standbys.push(`${standbys.length + 1}. ${userMention}`);
+                await interaction.reply({ content: '✅ ปาร์ตี้เต็ม — เพิ่มในคิวสำรองแล้ว', ephemeral: true });
+            } else {
+                players.push(`${players.length + 1}. ${userMention}`);
+                await interaction.reply({ content: '✅ เข้าร่วมแล้ว!', ephemeral: true });
+            }
+
+        // ── select_role ───────────────────────────────────────────────────────
+        } else if (isSelectRole) {
+            const role = interaction.values[0];
+            if (inPlayers) {
+                const idx = players.findIndex(p => p.includes(userMention));
+                if (idx !== -1) players[idx] = `${idx + 1}. ${userMention} [${role}]`;
+                await interaction.update({ content: `✅ เปลี่ยนเป็น **${role}**`, components: [] });
+            } else if (inStandbys) {
+                await interaction.update({ content: '❌ คุณอยู่ในคิวสำรอง', components: [] });
+                return;
+            } else {
+                if (players.length >= maxPlayers) {
+                    standbys.push(`${standbys.length + 1}. ${userMention}`);
+                    await interaction.update({ content: '✅ ปาร์ตี้เต็ม — เพิ่มในคิวสำรองแล้ว', components: [] });
+                } else {
+                    players.push(`${players.length + 1}. ${userMention} [${role}]`);
+                    await interaction.update({ content: `✅ เข้าร่วมในตำแหน่ง **${role}**`, components: [] });
+                }
+            }
+
+        // ── btn_leave ─────────────────────────────────────────────────────────
+        } else if (customId === 'btn_leave') {
+            if (!inPlayers && !inStandbys) {
+                await interaction.reply({ content: '❌ คุณไม่ได้อยู่ในปาร์ตี้', ephemeral: true });
+                return;
+            }
+            if (isHost) {
+                await interaction.reply({ content: '❌ Host ออกไม่ได้ — กด "ยุติ" แทน', ephemeral: true });
+                return;
+            }
+            if (inStandbys) {
+                standbys = standbys.filter(l => !l.includes(userMention));
+                await interaction.reply({ content: '✅ ออกจากคิวสำรองแล้ว', ephemeral: true });
+            } else {
+                players = players.filter(l => !l.includes(userMention));
+                let msg = '✅ ออกจากปาร์ตี้แล้ว';
+                if (standbys.length > 0) {
+                    const first = standbys.shift();
+                    const sm = first.match(/<@\d+>/);
+                    if (sm) {
+                        players.push(`${players.length + 1}. ${sm[0]}`);
+                        msg += ` — ดึง ${sm[0]} จากคิวสำรองขึ้นมา`;
+                        await freshMsg.channel.send(`🔔 ${sm[0]} เลื่อนเป็นตัวจริงในปาร์ตี้ **${gameName}** แล้ว!`);
+                    }
+                }
+                await interaction.reply({ content: msg, ephemeral: true });
+            }
+            players = players.map((l, i) => `${i + 1}. ${l.substring(l.indexOf('.') + 1).trim()}`);
+            standbys = standbys.map((l, i) => `${i + 1}. ${l.substring(l.indexOf('.') + 1).trim()}`);
+
+        // ── select_kick ───────────────────────────────────────────────────────
+        } else if (isSelectKick) {
+            const kickedId = interaction.values[0];
+            const kickedMention = `<@${kickedId}>`;
+            if (!players.some(p => p.includes(kickedMention))) {
+                await interaction.update({ content: '❌ ผู้เล่นคนนี้ไม่ได้อยู่ในปาร์ตี้แล้ว', components: [] });
+                return;
+            }
+            players = players.filter(p => !p.includes(kickedMention));
+            let kickMsg = `✅ เตะ ${kickedMention} ออกแล้ว`;
+            if (standbys.length > 0) {
+                const first = standbys.shift();
+                const sm = first.match(/<@\d+>/);
+                if (sm) {
+                    players.push(`${players.length + 1}. ${sm[0]}`);
+                    kickMsg += ` — ดึง ${sm[0]} ขึ้นมาแทน`;
+                    await freshMsg.channel.send(`🔔 ${sm[0]} เลื่อนเป็นตัวจริงในปาร์ตี้ **${gameName}** แล้ว!`);
+                }
+            }
+            players = players.map((l, i) => `${i + 1}. ${l.substring(l.indexOf('.') + 1).trim()}`);
+            standbys = standbys.map((l, i) => `${i + 1}. ${l.substring(l.indexOf('.') + 1).trim()}`);
+            await _tryDM(interaction.client, kickedId, `❌ คุณถูกเตะออกจากปาร์ตี้ **${gameName}**`);
+            await interaction.update({ content: kickMsg, components: [] });
+
+        // ── select_transfer ───────────────────────────────────────────────────
+        } else if (isSelectTransfer) {
+            const newHostId = interaction.values[0];
+            const newHostMention = `<@${newHostId}>`;
+            if (!players.some(p => p.includes(newHostMention))) {
+                await interaction.update({ content: '❌ ผู้เล่นคนนี้ไม่ได้อยู่ในปาร์ตี้แล้ว', components: [] });
+                return;
+            }
+            hostStr = `👑 ${newHostMention}`;
+            players = players.map(p => p.replace(' 👑', ''));
+            const nhIdx = players.findIndex(p => p.includes(newHostMention));
+            if (nhIdx !== -1) players[nhIdx] += ' 👑';
+            await _tryDM(interaction.client, newHostId, `👑 คุณได้รับสิทธิ์ Host ของปาร์ตี้ **${gameName}** แล้ว!`);
+            await interaction.update({ content: `✅ โอน Host ให้ ${newHostMention} แล้ว`, components: [] });
+        }
+
+        // ── Rebuild embed + canvas ────────────────────────────────────────────
+        await _rebuildEmbed(interaction, gameName, game, timeStr, hostStr, detailsStr, maxPlayers, players, standbys, freshEmbed, freshMsg);
+
+        // แจ้ง Host เมื่อปาร์ตี้เพิ่งเต็ม
+        if (players.length === maxPlayers && beforeCount < maxPlayers) {
+            const hId = hostMatch ? hostMatch[1] : null;
+            if (hId) {
+                await freshMsg.channel.send(`🎉 <@${hId}> ปาร์ตี้ **${gameName}** เต็มแล้ว! (${maxPlayers}/${maxPlayers})`);
+                await _tryDM(interaction.client, hId, `🎉 ปาร์ตี้ **${gameName}** เต็มแล้ว! ผู้เล่นครบ ${maxPlayers} คน`);
+            }
+        }
+
+    } catch (error) {
+        console.error('Button interaction error:', error);
+        try {
+            if (!interaction.replied && !interaction.deferred) {
+                await interaction.reply({ content: '❌ เกิดข้อผิดพลาด กรุณาลองใหม่', ephemeral: true });
+            }
+        } catch (e) {}
+    } finally {
+        processingMessages.delete(message.id);
+    }
 }
 
 module.exports = { handleButtonInteraction };
