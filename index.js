@@ -39,6 +39,8 @@ client.once(Events.ClientReady, async c => {
     console.log(`✅ พร้อมทำงานแล้ว! ล็อกอินในชื่อ ${c.user.tag}`);
     const { restoreJobs } = require('./scheduler');
     await restoreJobs(c);
+    const { restoreAll } = require('./utils/sessionPoller');
+    restoreAll(c);
 });
 
 client.on(Events.InteractionCreate, async interaction => {

@@ -4,10 +4,10 @@ const moment = require('moment-timezone');
 const fs = require('fs');
 const path = require('path');
 const { getGameConfig } = require('./config/games');
+const { createSession } = require('./utils/sessionStore');
+const { startPoller } = require('./utils/sessionPoller');
 
 const jobs = new Map();
-const checkins = new Map();           // partyMessageId -> Set<userId>
-const reminderMessageIds = new Map(); // partyMessageId -> [msgId, ...]
 const JOBS_FILE = path.join(__dirname, 'scheduled_jobs.json');
 
 // ─── File persistence ────────────────────────────────────────────────────────
@@ -21,16 +21,8 @@ function _loadJobsData() {
 
 function _saveJobToFile(messageId, channelId, exactTimeISO) {
     const data = _loadJobsData();
-    data[messageId] = { channelId, exactTimeISO, checkins: [], reminderMessageIds: [] };
+    data[messageId] = { channelId, exactTimeISO };
     try { fs.writeFileSync(JOBS_FILE, JSON.stringify(data, null, 2)); } catch (e) { console.error('Error saving jobs file:', e); }
-}
-
-function _persistReminderIds(messageId, ids) {
-    const data = _loadJobsData();
-    if (data[messageId]) {
-        data[messageId].reminderMessageIds = ids;
-        try { fs.writeFileSync(JOBS_FILE, JSON.stringify(data, null, 2)); } catch (e) {}
-    }
 }
 
 function _removeJobFromFile(messageId) {
@@ -43,57 +35,13 @@ function _removeJobFromFile(messageId) {
 // ─── In-memory helpers ────────────────────────────────────────────────────────
 
 function _cancelJobInMemory(messageId) {
-    const jobList = jobs.get(messageId);
-    if (jobList) { jobList.forEach(j => j.cancel()); jobs.delete(messageId); }
+    const job = jobs.get(messageId);
+    if (job) { job.cancel(); jobs.delete(messageId); }
 }
 
 function _cleanup(messageId) {
     _removeJobFromFile(messageId);
     jobs.delete(messageId);
-    checkins.delete(messageId);
-    reminderMessageIds.delete(messageId);
-}
-
-// ─── Embed parser ────────────────────────────────────────────────────────────
-
-function _parsePlayerIds(description) {
-    const playerIds = [], standbyIds = [];
-    let mode = 'header';
-    for (const line of description.split('\n')) {
-        const t = line.trim();
-        if (t.startsWith('**ผู้เล่น')) { mode = 'players'; continue; }
-        if (t.startsWith('**ตัวสำรอง')) { mode = 'standbys'; continue; }
-        const m = t.match(/<@(\d+)>/);
-        if (m) {
-            if (mode === 'players') playerIds.push(m[1]);
-            else if (mode === 'standbys') standbyIds.push(m[1]);
-        }
-    }
-    return { playerIds, standbyIds };
-}
-
-// ─── Public API ───────────────────────────────────────────────────────────────
-
-function recordCheckin(partyMessageId, userId) {
-    if (!checkins.has(partyMessageId)) checkins.set(partyMessageId, new Set());
-    checkins.get(partyMessageId).add(userId);
-    // Persist
-    const data = _loadJobsData();
-    if (data[partyMessageId]) {
-        data[partyMessageId].checkins = Array.from(checkins.get(partyMessageId));
-        try { fs.writeFileSync(JOBS_FILE, JSON.stringify(data, null, 2)); } catch (e) {}
-    }
-}
-
-function getCheckinCount(partyMessageId) {
-    return checkins.get(partyMessageId)?.size ?? 0;
-}
-
-function getReminderMessageIds(messageId) {
-    const inMem = reminderMessageIds.get(messageId);
-    if (inMem?.length) return inMem;
-    const data = _loadJobsData();
-    return data[messageId]?.reminderMessageIds || [];
 }
 
 function getExactTime(timeStr) {
@@ -104,14 +52,13 @@ function getExactTime(timeStr) {
 }
 
 // ─── Core scheduler ───────────────────────────────────────────────────────────
+// ถึงเวลาเริ่ม: ครบคน -> ping ทุกคนเริ่มเลย, ไม่ครบคน -> ยกเลิกอัตโนมัติ (ไม่มีขั้นเช็คอินคั่นแล้ว)
 
 function _scheduleJobInternal(message, exactTime) {
     const messageId = message.id;
     _cancelJobInMemory(messageId);
 
-    const reminderTime = new Date(exactTime.getTime() - 5 * 60 * 1000);
-    const now = new Date();
-    const jobList = [];
+    if (exactTime <= new Date()) return false;
 
     async function _tryDM(client, userId, dmEmbed) {
         try {
@@ -120,7 +67,7 @@ function _scheduleJobInternal(message, exactTime) {
         } catch (e) {}
     }
 
-    async function executeAlert(isFinal) {
+    async function executeStart() {
         try {
             const fetchedMsg = await message.channel.messages.fetch(messageId);
             if (!fetchedMsg?.embeds[0]) return;
@@ -134,111 +81,26 @@ function _scheduleJobInternal(message, exactTime) {
             const gameName = embed.title.replace('🎮 ', '');
             const game = getGameConfig(gameName);
 
-            // Collect all mentions for pings
-            const allMentions = [];
-            const mr = /<@\d+>/g; let mn;
-            while ((mn = mr.exec(embed.description)) !== null) {
-                if (!allMentions.includes(mn[0])) allMentions.push(mn[0]);
+            // ดึงรายชื่อผู้เล่นตัวจริงจาก description (ไม่รวมตัวสำรองที่ยังไม่ได้เลื่อนขึ้นมา)
+            const playerIds = [];
+            let mode = 'header';
+            for (const line of embed.description.split('\n')) {
+                const t = line.trim();
+                if (t.startsWith('**ผู้เล่น')) { mode = 'players'; continue; }
+                if (t.startsWith('**ตัวสำรอง')) { mode = 'standbys'; continue; }
+                if (mode === 'players') {
+                    const m = t.match(/<@(\d+)>/);
+                    if (m) playerIds.push(m[1]);
+                }
             }
+            const playerMentions = playerIds.map(uid => `<@${uid}>`);
 
-            // ── FINAL ALERT ──────────────────────────────────────────────────
-            if (isFinal) {
-                const isPartyFull = maxPlayers === 0 || currentCount >= maxPlayers;
+            const isPartyFull = maxPlayers === 0 || currentCount >= maxPlayers;
 
-                // ไม่ครบคน → ยกเลิก
-                if (!isPartyFull) {
-                    if (allMentions.length > 0) {
-                        await message.channel.send({
-                            content: `${allMentions.join(' ')}\n❌ ปาร์ตี้ **${gameName}** ถูกยกเลิกอัตโนมัติ เนื่องจากผู้เล่นไม่ครบ (${currentCount}/${maxPlayers} คน)`
-                        });
-                    }
-                    for (const rid of getReminderMessageIds(messageId)) {
-                        try { const m = await message.channel.messages.fetch(rid); await m.delete(); } catch (e) {}
-                    }
-                    try { await fetchedMsg.delete(); } catch (e) {}
-                    _cleanup(messageId);
-                    return;
-                }
-
-                // ครบคน — ตรวจ check-in
-                const { playerIds, standbyIds } = _parsePlayerIds(embed.description);
-                const wasCheckinDone = checkins.has(messageId);
-                let finalPlayerIds, absentMentions = [];
-
-                if (wasCheckinDone) {
-                    const confirmed = checkins.get(messageId);
-                    const confirmedPlayers = playerIds.filter(uid => confirmed.has(uid));
-                    const absentPlayers = playerIds.filter(uid => !confirmed.has(uid));
-                    const confirmedStandbys = standbyIds.filter(uid => confirmed.has(uid));
-
-                    finalPlayerIds = [...confirmedPlayers];
-                    for (const uid of confirmedStandbys) {
-                        if (finalPlayerIds.length < playerIds.length) finalPlayerIds.push(uid);
-                    }
-                    absentMentions = absentPlayers.map(uid => `<@${uid}>`);
-
-                    if (finalPlayerIds.length === 0) {
-                        await message.channel.send({
-                            content: `${allMentions.join(' ')}\n❌ ปาร์ตี้ **${gameName}** ถูกยกเลิกอัตโนมัติ เนื่องจากไม่มีผู้เล่นยืนยันเข้าร่วม`
-                        });
-                        const rIds = reminderMessageIds.get(messageId) || [];
-                        for (const rid of rIds) {
-                            try { const m = await message.channel.messages.fetch(rid); await m.delete(); } catch (e) {}
-                        }
-                        try { await fetchedMsg.delete(); } catch (e) {}
-                        _cleanup(messageId);
-                        return;
-                    }
-                } else {
-                    finalPlayerIds = playerIds;
-                }
-
-                const finalMentions = finalPlayerIds.map(uid => `<@${uid}>`);
-                const memberList = finalPlayerIds.map((uid, i) => `${i + 1}. <@${uid}>`).join('\n');
-
-                let desc = `ปาร์ตี้เกม: **${gameName}**\n\n👥 **ผู้เล่นที่ยืนยันแล้ว (${finalPlayerIds.length} คน):**\n${memberList}\n\nถึงเวลาเริ่มแล้ว ลุยเลย! 🚀`;
-                if (absentMentions.length > 0) desc += `\n\n⚠️ ผู้เล่นที่ไม่ยืนยัน: ${absentMentions.join(' ')}`;
-
-                const alertEmbed = new EmbedBuilder()
-                    .setTitle('🚨 แจ้งเตือน: ได้เวลาเริ่มเกมแล้ว')
-                    .setDescription(desc)
-                    .setColor(game.themeColor);
-
-                await message.channel.send({ content: `🔔 ${finalMentions.join(' ')}`, embeds: [alertEmbed] });
-
-                // Disable check-in button บน reminder message
-                const disabledBtn = new ButtonBuilder()
-                    .setCustomId(`btn_checkin_${messageId}`)
-                    .setLabel('✅ ยืนยันเข้าร่วม')
-                    .setStyle(ButtonStyle.Success)
-                    .setDisabled(true);
-                const rIds = reminderMessageIds.get(messageId) || [];
-                for (const rid of rIds) {
-                    try {
-                        const m = await message.channel.messages.fetch(rid);
-                        await m.edit({ components: [new ActionRowBuilder().addComponents(disabledBtn)] });
-                    } catch (e) {}
-                }
-
-                // DM ทุกคนที่ยืนยัน
-                const dmEmbed = new EmbedBuilder()
-                    .setTitle(`🚨 ได้เวลาเริ่ม ${gameName} แล้ว!`)
-                    .setDescription('เข้า server และเตรียมเล่นได้เลยครับ 🚀')
-                    .setColor(game.themeColor);
-                for (const uid of finalPlayerIds) await _tryDM(message.client, uid, dmEmbed);
-
-                _cleanup(messageId);
-                return;
-            }
-
-            // ── 5-MIN REMINDER ────────────────────────────────────────────────────
-            const { playerIds, standbyIds } = _parsePlayerIds(embed.description);
-
-            // ไม่ครบคน → ยกเลิกทันที ไม่ต้องให้กดยืนยัน
-            if (maxPlayers > 0 && currentCount < maxPlayers) {
-                if (allMentions.length > 0) {
+            if (!isPartyFull) {
+                if (playerMentions.length > 0) {
                     await message.channel.send({
-                        content: `${allMentions.join(' ')}\n❌ ปาร์ตี้ **${gameName}** ถูกยกเลิกอัตโนมัติ เนื่องจากผู้เล่นไม่ครบ (${currentCount}/${maxPlayers} คน)`
+                        content: `${playerMentions.join(' ')}\n❌ ปาร์ตี้ **${gameName}** ถูกยกเลิกอัตโนมัติ เนื่องจากผู้เล่นไม่ครบ (${currentCount}/${maxPlayers} คน)`
                     });
                 }
                 try { await fetchedMsg.delete(); } catch (e) {}
@@ -246,61 +108,63 @@ function _scheduleJobInternal(message, exactTime) {
                 return;
             }
 
-            // ครบคน → เริ่ม check-in พร้อม list สถานะ
-            checkins.set(messageId, new Set());
+            const memberList = playerIds.map((uid, i) => `${i + 1}. <@${uid}>`).join('\n');
+            const desc = `ปาร์ตี้เกม: **${gameName}**\n\n👥 **ผู้เล่น (${playerIds.length} คน):**\n${memberList}\n\nถึงเวลาเริ่มแล้ว ลุยเลย! 🚀`;
 
-            const statusLines = playerIds.map((uid, i) => `${i + 1}. <@${uid}> ⏳`).join('\n');
-
-            const checkinBtn = new ButtonBuilder()
-                .setCustomId(`btn_checkin_${messageId}`)
-                .setLabel('✅ ยืนยันเข้าร่วม')
-                .setStyle(ButtonStyle.Success);
-
-            const reminderEmbed = new EmbedBuilder()
-                .setTitle('⏳ อีก 5 นาทีจะเริ่มเกม!')
-                .setDescription(
-                    `ปาร์ตี้เกม: **${gameName}**\n` +
-                    `กดยืนยันก่อนเวลา — ผู้ที่ไม่ยืนยันจะถูกตัดออกอัตโนมัติ\n\n` +
-                    `**สถานะ (0/${playerIds.length}):**\n${statusLines}`
-                )
+            const alertEmbed = new EmbedBuilder()
+                .setTitle('🚨 แจ้งเตือน: ได้เวลาเริ่มเกมแล้ว')
+                .setDescription(desc)
                 .setColor(game.themeColor);
 
-            const sent = await message.channel.send({
-                content: `🔔 ${allMentions.join(' ')}`,
-                embeds: [reminderEmbed],
-                components: [new ActionRowBuilder().addComponents(checkinBtn)]
-            });
+            // เฉพาะ Valorant เท่านั้นที่ดึงสถิติได้ (ผ่าน HenrikDev API แบบไม่เป็นทางการ)
+            // ใช้ messageId เดิมเป็น session key เพราะรู้อยู่แล้วโดยไม่ต้องรอ id ของ alert message
+            const isValorant = gameName.toLowerCase().includes('valorant');
+            let components = [];
+            let hostId = null;
+            if (isValorant) {
+                const hostMatch = embed.description.match(/👑 <@(\d+)>/);
+                hostId = hostMatch ? hostMatch[1] : playerIds[0];
+                components = [new ActionRowBuilder().addComponents(
+                    new ButtonBuilder()
+                        .setCustomId(`btn_summary_${messageId}`)
+                        .setLabel('🛑 จบ Session')
+                        .setStyle(ButtonStyle.Danger)
+                )];
+            }
 
-            const existing = reminderMessageIds.get(messageId) || [];
-            existing.push(sent.id);
-            reminderMessageIds.set(messageId, existing);
-            _persistReminderIds(messageId, existing);
+            const sent = await message.channel.send({ content: `🔔 ${playerMentions.join(' ')}`, embeds: [alertEmbed], components });
 
-            // DM ทุกคน
+            if (isValorant) {
+                createSession(messageId, {
+                    gameName,
+                    hostId,
+                    playerIds,
+                    channelId: message.channel.id,
+                    alertMessageId: sent.id,
+                    startedAtMs: Date.now(),
+                    lastMatchIds: {},
+                });
+                startPoller(message.client, messageId);
+            }
+
+            // เกมเริ่มแล้ว โพสต์ปาร์ตี้ (banner+ปุ่ม) หมดหน้าที่ ลบทิ้งกันแชทรก
+            try { await fetchedMsg.delete(); } catch (e) {}
+
             const dmEmbed = new EmbedBuilder()
-                .setTitle(`⏳ อีก 5 นาที ปาร์ตี้ ${gameName} จะเริ่ม!`)
-                .setDescription('กลับไปที่ server และกดยืนยันเข้าร่วมด้วยนะครับ')
+                .setTitle(`🚨 ได้เวลาเริ่ม ${gameName} แล้ว!`)
+                .setDescription('เข้า server และเตรียมเล่นได้เลยครับ 🚀')
                 .setColor(game.themeColor);
-            for (const uid of [...playerIds, ...standbyIds]) await _tryDM(message.client, uid, dmEmbed);
+            for (const uid of playerIds) await _tryDM(message.client, uid, dmEmbed);
 
         } catch (error) {
             console.error('Error running scheduled job:', error);
         }
-
-        if (isFinal) _cleanup(messageId);
+        _cleanup(messageId);
     }
 
-    if (reminderTime > now) {
-        const j1 = schedule.scheduleJob(reminderTime, () => executeAlert(false));
-        if (j1) jobList.push(j1);
-    }
-    if (exactTime > now) {
-        const j2 = schedule.scheduleJob(exactTime, () => executeAlert(true));
-        if (j2) jobList.push(j2);
-    }
-
-    if (jobList.length > 0) {
-        jobs.set(messageId, jobList);
+    const job = schedule.scheduleJob(exactTime, executeStart);
+    if (job) {
+        jobs.set(messageId, job);
         console.log(`ตั้งปลุกสำหรับ ${messageId} เวลา ${exactTime.toLocaleString()}`);
         return true;
     }
@@ -333,13 +197,6 @@ async function restoreJobs(client) {
             const message = await channel.messages.fetch(messageId);
             if (message.embeds[0]?.title?.includes('❌')) { _removeJobFromFile(messageId); continue; }
 
-            if (job.checkins?.length > 0) {
-                checkins.set(messageId, new Set(job.checkins));
-            }
-            if (job.reminderMessageIds?.length > 0) {
-                reminderMessageIds.set(messageId, job.reminderMessageIds);
-            }
-
             _scheduleJobInternal(message, exactTime);
             restored++;
             console.log(`กู้คืน job สำเร็จ: ${messageId}`);
@@ -352,4 +209,4 @@ async function restoreJobs(client) {
     if (restored > 0) console.log(`กู้คืน job ทั้งหมด ${restored} รายการ`);
 }
 
-module.exports = { scheduleJob, cancelJob, getExactTime, restoreJobs, recordCheckin, getCheckinCount, getReminderMessageIds };
+module.exports = { scheduleJob, cancelJob, getExactTime, restoreJobs };

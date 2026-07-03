@@ -95,41 +95,29 @@ async function handleButtonInteraction(interaction) {
     const isSelectRole = customId === 'select_role' || customId.startsWith('select_role_');
     const isSelectKick = customId.startsWith('select_kick_');
     const isSelectTransfer = customId.startsWith('select_transfer_');
-    const isCheckin = customId.startsWith('btn_checkin_');
+    const isSummary = customId.startsWith('btn_summary_');
 
     if (!['btn_join', 'btn_leave', 'btn_cancel', 'btn_edit_time', 'btn_kick', 'btn_transfer'].includes(customId)
-        && !isSelectRole && !isSelectKick && !isSelectTransfer && !isCheckin) return;
+        && !isSelectRole && !isSelectKick && !isSelectTransfer && !isSummary) return;
 
-    // ── Check-in ──────────────────────────────────────────────────────────────
-    if (isCheckin) {
-        const partyMsgId = customId.replace('btn_checkin_', '');
-        const reminderEmbed = interaction.message.embeds[0];
+    // ── จบ Session (หยุดติดตามสถิติอัตโนมัติ — เฉพาะ Valorant ที่ผูก Riot ID ไว้) ─
+    if (isSummary) {
+        const sessionKey = customId.replace('btn_summary_', '');
+        const { getSession } = require('../utils/sessionStore');
+        const session = getSession(sessionKey);
 
-        if (!reminderEmbed || !reminderEmbed.description.includes(`<@${interaction.user.id}>`)) {
-            await interaction.reply({ content: '❌ คุณไม่ได้อยู่ในปาร์ตี้นี้', ephemeral: true });
+        if (!session) {
+            await interaction.reply({ content: '❌ Session นี้จบไปแล้ว หรือหมดอายุ', ephemeral: true });
+            return;
+        }
+        if (interaction.user.id !== session.hostId) {
+            await interaction.reply({ content: '❌ เฉพาะ Host เท่านั้นที่จบ Session ได้', ephemeral: true });
             return;
         }
 
-        await interaction.deferUpdate();
-
-        const { recordCheckin } = require('../scheduler');
-        recordCheckin(partyMsgId, interaction.user.id);
-
-        // อัปเดต ⏳ → ✅ และ counter real-time
-        try {
-            let newDesc = reminderEmbed.description.replace(
-                `<@${interaction.user.id}> ⏳`,
-                `<@${interaction.user.id}> ✅`
-            );
-            const confirmedCount = (newDesc.match(/\d+\. <@\d+> ✅/g) || []).length;
-            newDesc = newDesc.replace(
-                /\*\*สถานะ \(\d+\/(\d+)\)\*\*/,
-                `**สถานะ (${confirmedCount}/$1)**`
-            );
-            await interaction.message.edit({ embeds: [EmbedBuilder.from(reminderEmbed).setDescription(newDesc)] });
-        } catch (e) {}
-
-        await interaction.followUp({ content: '✅ ยืนยันแล้ว! รอเริ่มได้เลย', ephemeral: true });
+        const { endSession } = require('../utils/sessionPoller');
+        await endSession(interaction.client, sessionKey);
+        await interaction.reply({ content: '✅ จบ Session แล้ว หยุดติดตามสถิติ', ephemeral: true });
         return;
     }
 
@@ -171,18 +159,25 @@ async function handleButtonInteraction(interaction) {
         }
 
         if (customId === 'btn_cancel') {
-            const newEmbed = EmbedBuilder.from(embed)
-                .setColor(0xFF4444)
-                .setTitle('❌ ' + embed.title.replace('🎮 ', ''))
-                .setDescription('ปาร์ตี้นี้ถูกยกเลิกแล้ว')
-                .setImage(null);
-            await message.edit({ embeds: [newEmbed], components: [], attachments: [] });
-            await interaction.reply({ content: '✅ ยุติปาร์ตี้แล้ว', ephemeral: true });
-            const { cancelJob, getReminderMessageIds } = require('../scheduler');
-            for (const rid of getReminderMessageIds(message.id)) {
-                try { await (await message.channel.messages.fetch(rid)).delete(); } catch (e) {}
+            // ล็อกเหมือนปุ่มอื่น กัน join/leave ที่ค้างอยู่ rebuild embed ทับสถานะยกเลิกกลับมา
+            if (processingMessages.has(message.id)) {
+                await interaction.reply({ content: '⏳ กรุณารอสักครู่', ephemeral: true });
+                return;
             }
-            cancelJob(message.id);
+            processingMessages.add(message.id);
+            try {
+                const newEmbed = EmbedBuilder.from(embed)
+                    .setColor(0xFF4444)
+                    .setTitle('❌ ' + embed.title.replace('🎮 ', ''))
+                    .setDescription('ปาร์ตี้นี้ถูกยกเลิกแล้ว')
+                    .setImage(null);
+                await message.edit({ embeds: [newEmbed], components: [], attachments: [] });
+                await interaction.reply({ content: '✅ ยุติปาร์ตี้แล้ว', ephemeral: true });
+                const { cancelJob } = require('../scheduler');
+                cancelJob(message.id);
+            } finally {
+                processingMessages.delete(message.id);
+            }
             return;
         }
 

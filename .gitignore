@@ -1,2 +1,5 @@
 node_modules
 .env
+scheduled_jobs.json
+player_links.json
+active_sessions.json
