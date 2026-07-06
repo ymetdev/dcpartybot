@@ -3,6 +3,7 @@ const GAMES = [
         name: 'Valorant',
         themeColor: '#FF4655',
         hasRoles: true,
+        requiresLink: true, // ต้อง /link Riot ID ก่อนถึงจะเข้าร่วมได้ (ใช้สรุปสถิติหลังจบปาร์ตี้)
         roles: [
             { label: 'Duelist', value: 'Duelist', emoji: '⚔️' },
             { label: 'Initiator', value: 'Initiator', emoji: '👁️' },

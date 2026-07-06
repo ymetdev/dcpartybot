@@ -2,6 +2,7 @@ const { SlashCommandBuilder, AttachmentBuilder, EmbedBuilder, ButtonBuilder, But
 const { generatePartyImage } = require('../utils/canvasHelper');
 const { scheduleJob } = require('../scheduler');
 const { GAMES, getGameConfig } = require('../config/games');
+const { getLink } = require('../utils/playerLinks');
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -28,8 +29,14 @@ module.exports = {
         }
 
         const hostId = interaction.user.id;
-        const hostUser = await interaction.client.users.fetch(hostId);
         const gameConfig = getGameConfig(game);
+
+        if (gameConfig.requiresLink && !getLink(hostId)) {
+            await interaction.reply({ content: `❌ ต้อง /link Riot ID ก่อนถึงจะสร้างปาร์ตี้ **${gameConfig.name}** ได้ (ใช้สรุปสถิติหลังจบปาร์ตี้)`, ephemeral: true });
+            return;
+        }
+
+        const hostUser = await interaction.client.users.fetch(hostId);
 
         await interaction.deferReply();
 
