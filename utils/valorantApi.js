@@ -16,11 +16,12 @@ async function fetchAccount(name, tag) {
     return json?.data || null;
 }
 
-// หาแมตช์ล่าสุดที่เริ่มหลังเวลาที่ปาร์ตี้เริ่ม (afterMs) แบบ best-effort
+// หาแมตช์ Competitive ล่าสุดที่เริ่มหลังเวลาที่ปาร์ตี้เริ่ม (afterMs) แบบ best-effort
 // เดาจาก match history เท่านั้น ไม่มีทาง verify 100% ว่าเป็นแมตช์เดียวกับปาร์ตี้นี้จริง
+// ข้ามโหมดอื่น (Deathmatch, Unrated, Custom ฯลฯ) ไปเลย เพราะปนกับแมตช์วอร์มอัพ/ซ้อมของแต่ละคน
 async function fetchRecentMatchStats(region, name, tag, afterMs) {
     const res = await fetch(
-        `${BASE_URL}/valorant/v3/matches/${region}/${encodeURIComponent(name)}/${encodeURIComponent(tag)}?size=5`,
+        `${BASE_URL}/valorant/v3/matches/${region}/${encodeURIComponent(name)}/${encodeURIComponent(tag)}?size=10`,
         { headers: _headers() }
     );
     if (!res.ok) return null;
@@ -29,6 +30,8 @@ async function fetchRecentMatchStats(region, name, tag, afterMs) {
     const targetKey = `${name}#${tag}`.toLowerCase();
 
     for (const match of matches) {
+        if (match.metadata?.mode?.toLowerCase() !== 'competitive') continue;
+
         const startedMs = (match.metadata?.game_start ?? 0) * 1000;
         if (startedMs < afterMs) continue;
 
