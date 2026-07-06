@@ -4,6 +4,22 @@ const { getGameConfig } = require('../config/games');
 
 const processingMessages = new Set();
 
+// ─── คำแซวคนแย่สุด (สุ่มเปลี่ยนไปเรื่อยๆ ไม่ให้ซ้ำจนน่าเบื่อ) ───────────────────
+const ROAST_LINES = [
+    'ยิงปืนหรือให้ปืนดูก็ไม่รู้',
+    'ให้ Vandal ไปสักก็คงยิงแม่นกว่านี้',
+    'ทีมแบกจนหลังหัก',
+    'เก็บ agent ไปทำ support สายเสิร์ฟน้ำดีกว่า',
+    'ตายไวกว่า WiFi หลุดอีก',
+    'MVP ฝั่งศัตรูอยู่กับเรามาโดยไม่รู้ตัว',
+    'จอมงีบกลางแมพ',
+    'K/D นี้ขอเมตตาหน่อยพี่',
+];
+
+function _pickRoastLine() {
+    return ROAST_LINES[Math.floor(Math.random() * ROAST_LINES.length)];
+}
+
 // ─── Description parser ───────────────────────────────────────────────────────
 // Format: 🕐 time | 👑 <@host> | 📝 details | **ผู้เล่น N/M** | player lines | **ตัวสำรอง** | standby lines
 
@@ -188,8 +204,10 @@ async function handleButtonInteraction(interaction) {
         const lines = rows.map(r => {
             if (r.status === 'unlinked') return `<@${r.uid}> — ยังไม่ได้ /link ไว้`;
             if (r.status === 'not-in-match') return `<@${r.uid}> — ไม่พบในแมตช์เดียวกับ Host`;
-            const tag = r.uid === best?.uid ? ' 🏆' : (r.uid === worst?.uid ? ' 🪦' : '');
-            return `<@${r.uid}> — ${r.mapCount} แมพ | K/D รวม ${r.kills}/${r.deaths} (${r.kd.toFixed(2)})${tag}`;
+            const isWorst = r.uid === worst?.uid;
+            const tag = r.uid === best?.uid ? ' 🏆' : (isWorst ? ' 🪦' : '');
+            const roast = isWorst ? ` _(${_pickRoastLine()})_` : '';
+            return `<@${r.uid}> — ${r.mapCount} แมพ | K/D รวม ${r.kills}/${r.deaths} (${r.kd.toFixed(2)})${tag}${roast}`;
         });
 
         await finish(`อ้างอิงจากแมตช์ของ Host <@${session.hostId}> (${hostMatches.length} แมพ)\n\n${lines.join('\n')}`);
