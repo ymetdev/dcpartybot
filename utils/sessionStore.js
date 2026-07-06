@@ -1,4 +1,4 @@
-// เก็บ session ของปาร์ตี้ที่เริ่มเล่นแล้ว ถูกติดตามสถิติอัตโนมัติจนกว่า host จะกดจบ
+// เก็บ session ของปาร์ตี้ที่เริ่มเล่นแล้ว รอ host กดจบเพื่อสรุปผล
 const fs = require('fs');
 const path = require('path');
 
@@ -32,8 +32,4 @@ function removeSession(key) {
     _save(data);
 }
 
-function listSessions() {
-    return _load();
-}
-
-module.exports = { createSession, getSession, removeSession, listSessions };
+module.exports = { createSession, getSession, removeSession };

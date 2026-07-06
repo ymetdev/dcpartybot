@@ -5,7 +5,6 @@ const fs = require('fs');
 const path = require('path');
 const { getGameConfig } = require('./config/games');
 const { createSession } = require('./utils/sessionStore');
-const { startPoller } = require('./utils/sessionPoller');
 
 const jobs = new Map();
 const JOBS_FILE = path.join(__dirname, 'scheduled_jobs.json');
@@ -127,24 +126,15 @@ function _scheduleJobInternal(message, exactTime) {
                 components = [new ActionRowBuilder().addComponents(
                     new ButtonBuilder()
                         .setCustomId(`btn_summary_${messageId}`)
-                        .setLabel('🛑 จบ Session')
-                        .setStyle(ButtonStyle.Danger)
+                        .setLabel('📊 สรุปผล & จบ Session')
+                        .setStyle(ButtonStyle.Primary)
                 )];
             }
 
-            const sent = await message.channel.send({ content: `🔔 ${playerMentions.join(' ')}`, embeds: [alertEmbed], components });
+            await message.channel.send({ content: `🔔 ${playerMentions.join(' ')}`, embeds: [alertEmbed], components });
 
             if (isValorant) {
-                createSession(messageId, {
-                    gameName,
-                    hostId,
-                    playerIds,
-                    channelId: message.channel.id,
-                    alertMessageId: sent.id,
-                    startedAtMs: Date.now(),
-                    lastMatchIds: {},
-                });
-                startPoller(message.client, messageId);
+                createSession(messageId, { gameName, hostId, playerIds, startedAtMs: Date.now() });
             }
 
             // เกมเริ่มแล้ว โพสต์ปาร์ตี้ (banner+ปุ่ม) หมดหน้าที่ ลบทิ้งกันแชทรก

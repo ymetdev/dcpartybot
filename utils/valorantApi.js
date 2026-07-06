@@ -16,42 +16,47 @@ async function fetchAccount(name, tag) {
     return json?.data || null;
 }
 
-// หาแมตช์ Competitive ล่าสุดที่เริ่มหลังเวลาที่ปาร์ตี้เริ่ม (afterMs) แบบ best-effort
-// เดาจาก match history เท่านั้น ไม่มีทาง verify 100% ว่าเป็นแมตช์เดียวกับปาร์ตี้นี้จริง
+// หาแมตช์ Competitive ทั้งหมดของคนคนนี้ (ใช้เป็น Host) ที่เริ่มหลัง afterMs
+// คืน roster เต็มของทุกแมตช์ (ทั้งสองฝั่ง) เพื่อเอาไปจับคู่หาเพื่อนร่วมทีมจากแมตช์เดียวกันจริงๆ
+// แทนที่จะให้แต่ละคน query ประวัติตัวเองแยกกัน ซึ่งเสี่ยงได้แมตช์คนละอันที่ไม่เกี่ยวกับปาร์ตี้นี้เลย
 // ข้ามโหมดอื่น (Deathmatch, Unrated, Custom ฯลฯ) ไปเลย เพราะปนกับแมตช์วอร์มอัพ/ซ้อมของแต่ละคน
-async function fetchRecentMatchStats(region, name, tag, afterMs) {
+async function fetchCompetitiveMatchesSince(region, name, tag, afterMs) {
     const res = await fetch(
         `${BASE_URL}/valorant/v3/matches/${region}/${encodeURIComponent(name)}/${encodeURIComponent(tag)}?size=10`,
         { headers: _headers() }
     );
-    if (!res.ok) return null;
+    if (!res.ok) return [];
     const json = await res.json();
     const matches = json?.data || [];
     const targetKey = `${name}#${tag}`.toLowerCase();
 
+    const result = [];
     for (const match of matches) {
         if (match.metadata?.mode?.toLowerCase() !== 'competitive') continue;
 
         const startedMs = (match.metadata?.game_start ?? 0) * 1000;
         if (startedMs < afterMs) continue;
 
-        const me = (match.players?.all_players || []).find(
-            p => `${p.name}#${p.tag}`.toLowerCase() === targetKey
-        );
+        const allPlayers = match.players?.all_players || [];
+        const me = allPlayers.find(p => `${p.name}#${p.tag}`.toLowerCase() === targetKey);
         if (!me) continue;
 
-        return {
+        result.push({
             matchId: match.metadata?.matchid || match.metadata?.match_id || null,
             map: match.metadata?.map || '?',
-            mode: match.metadata?.mode || '?',
-            agent: me.character || me.agent?.name || me.agent || '?',
-            kills: me.stats?.kills ?? 0,
-            deaths: me.stats?.deaths ?? 0,
-            assists: me.stats?.assists ?? 0,
-            score: me.stats?.score ?? 0,
-        };
+            myTeam: me.team || me.team_id || null,
+            players: allPlayers.map(p => ({
+                name: p.name,
+                tag: p.tag,
+                team: p.team || p.team_id || null,
+                agent: p.character || p.agent?.name || p.agent || '?',
+                kills: p.stats?.kills ?? 0,
+                deaths: p.stats?.deaths ?? 0,
+                assists: p.stats?.assists ?? 0,
+            })),
+        });
     }
-    return null;
+    return result;
 }
 
-module.exports = { fetchAccount, fetchRecentMatchStats };
+module.exports = { fetchAccount, fetchCompetitiveMatchesSince };

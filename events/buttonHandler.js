@@ -100,14 +100,15 @@ async function handleButtonInteraction(interaction) {
     if (!['btn_join', 'btn_leave', 'btn_cancel', 'btn_edit_time', 'btn_kick', 'btn_transfer'].includes(customId)
         && !isSelectRole && !isSelectKick && !isSelectTransfer && !isSummary) return;
 
-    // ── จบ Session (หยุดติดตามสถิติอัตโนมัติ — เฉพาะ Valorant ที่ผูก Riot ID ไว้) ─
+    // ── สรุปผล & จบ Session (เฉพาะ Valorant ที่ผูก Riot ID ไว้) ──────────────────
+    // ดึงแมตช์ Competitive ทั้งหมดหลังปาร์ตี้เริ่ม รวม K/D ของแต่ละคน แล้วหาผู้เล่นดีที่สุด/แย่ที่สุด
     if (isSummary) {
         const sessionKey = customId.replace('btn_summary_', '');
-        const { getSession } = require('../utils/sessionStore');
+        const { getSession, removeSession } = require('../utils/sessionStore');
         const session = getSession(sessionKey);
 
         if (!session) {
-            await interaction.reply({ content: '❌ Session นี้จบไปแล้ว หรือหมดอายุ', ephemeral: true });
+            await interaction.reply({ content: '❌ Session นี้ถูกสรุปไปแล้ว หรือหมดอายุ', ephemeral: true });
             return;
         }
         if (interaction.user.id !== session.hostId) {
@@ -115,9 +116,83 @@ async function handleButtonInteraction(interaction) {
             return;
         }
 
-        const { endSession } = require('../utils/sessionPoller');
-        await endSession(interaction.client, sessionKey);
-        await interaction.reply({ content: '✅ จบ Session แล้ว หยุดติดตามสถิติ', ephemeral: true });
+        await interaction.deferReply();
+
+        const { getLink } = require('../utils/playerLinks');
+        const { fetchCompetitiveMatchesSince } = require('../utils/valorantApi');
+
+        const finish = async (description) => {
+            const summaryEmbed = new EmbedBuilder()
+                .setTitle(`📊 สรุปผลปาร์ตี้ ${session.gameName}`)
+                .setDescription(description)
+                .setColor(0x5865F2)
+                .setFooter({ text: 'นับเฉพาะฝั่งเดียวกับ Host ในแมตช์ Competitive หลังปาร์ตี้เริ่ม — ข้อมูลจาก HenrikDev API (unofficial)' });
+            await interaction.editReply({ embeds: [summaryEmbed] });
+            try { await interaction.message.edit({ components: [] }); } catch (e) {}
+            removeSession(sessionKey);
+        };
+
+        // ใช้แมตช์ของ Host เป็นตัวยึด แล้วดึงสถิติเพื่อนร่วมทีมจาก roster ของแมตช์เดียวกันนั้นเลย
+        // แม่นกว่าให้แต่ละคน query ประวัติตัวเองแยกกัน ซึ่งอาจได้แมตช์คนละอันที่ไม่เกี่ยวกับปาร์ตี้นี้
+        const hostLink = getLink(session.hostId);
+        if (!hostLink) {
+            await finish(`❌ Host <@${session.hostId}> ยังไม่ได้ /link Riot ID ไว้ — ระบบต้องอาศัยแมตช์ของ Host เป็นหลัก จึงสรุปผลไม่ได้`);
+            return;
+        }
+
+        let hostMatches;
+        try {
+            hostMatches = await fetchCompetitiveMatchesSince(hostLink.region, hostLink.name, hostLink.tag, session.startedAtMs);
+        } catch (e) {
+            await finish('❌ ดึงข้อมูลจาก Valorant API ไม่สำเร็จ ลองใหม่อีกครั้ง');
+            return;
+        }
+        if (hostMatches.length === 0) {
+            await finish(`❌ ไม่พบแมตช์ Competitive ของ Host หลังปาร์ตี้เริ่ม`);
+            return;
+        }
+
+        // riot name#tag (lowercase) -> discord uid ของคนที่ /link ไว้ในปาร์ตี้นี้
+        const linkedByRiotKey = new Map();
+        for (const uid of session.playerIds) {
+            const link = getLink(uid);
+            if (link) linkedByRiotKey.set(`${link.name}#${link.tag}`.toLowerCase(), uid);
+        }
+
+        // รวมสถิติเฉพาะคนที่อยู่ฝั่งเดียวกับ Host ในแต่ละแมพที่ Host เล่น
+        const totals = new Map(); // uid -> { kills, deaths, maps }
+        for (const match of hostMatches) {
+            for (const p of match.players) {
+                if (p.team !== match.myTeam) continue;
+                const uid = linkedByRiotKey.get(`${p.name}#${p.tag}`.toLowerCase());
+                if (!uid) continue;
+                const cur = totals.get(uid) || { kills: 0, deaths: 0, maps: 0 };
+                cur.kills += p.kills;
+                cur.deaths += p.deaths;
+                cur.maps += 1;
+                totals.set(uid, cur);
+            }
+        }
+
+        const rows = session.playerIds.map(uid => {
+            const t = totals.get(uid);
+            if (!t) return { uid, status: getLink(uid) ? 'not-in-match' : 'unlinked' };
+            const kd = t.deaths > 0 ? t.kills / t.deaths : t.kills;
+            return { uid, status: 'ok', mapCount: t.maps, kills: t.kills, deaths: t.deaths, kd };
+        });
+
+        const ranked = rows.filter(r => r.status === 'ok');
+        const best = ranked.length > 0 ? ranked.reduce((a, b) => (b.kd > a.kd ? b : a)) : null;
+        const worst = ranked.length > 1 ? ranked.reduce((a, b) => (b.kd < a.kd ? b : a)) : null;
+
+        const lines = rows.map(r => {
+            if (r.status === 'unlinked') return `<@${r.uid}> — ยังไม่ได้ /link ไว้`;
+            if (r.status === 'not-in-match') return `<@${r.uid}> — ไม่พบในแมตช์เดียวกับ Host`;
+            const tag = r.uid === best?.uid ? ' 🏆' : (r.uid === worst?.uid ? ' 🪦' : '');
+            return `<@${r.uid}> — ${r.mapCount} แมพ | K/D รวม ${r.kills}/${r.deaths} (${r.kd.toFixed(2)})${tag}`;
+        });
+
+        await finish(`อ้างอิงจากแมตช์ของ Host <@${session.hostId}> (${hostMatches.length} แมพ)\n\n${lines.join('\n')}`);
         return;
     }
 
