@@ -37,6 +37,15 @@ if (fs.existsSync(commandsPath)) {
 
 client.once(Events.ClientReady, async c => {
     console.log(`✅ พร้อมทำงานแล้ว! ล็อกอินในชื่อ ${c.user.tag}`);
+
+    try {
+        const commandData = client.commands.map(command => command.data.toJSON());
+        await c.application.commands.set(commandData);
+        console.log(`🔄 ซิงก์ ${commandData.length} slash command(s) กับ Discord เรียบร้อย`);
+    } catch (error) {
+        console.error('ซิงก์ slash command ไม่สำเร็จ:', error);
+    }
+
     const { restoreJobs } = require('./scheduler');
     await restoreJobs(c);
 });
