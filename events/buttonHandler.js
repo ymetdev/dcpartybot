@@ -337,13 +337,6 @@ async function handleButtonInteraction(interaction) {
 
         // ── btn_join ──────────────────────────────────────────────────────────
         if (customId === 'btn_join') {
-            if (game.requiresLink) {
-                const { getLink } = require('../utils/playerLinks');
-                if (!getLink(userId)) {
-                    await interaction.reply({ content: `❌ ต้อง /link Riot ID ก่อนถึงจะเข้าร่วมปาร์ตี้ **${gameName}** ได้ (ใช้สรุปสถิติหลังจบปาร์ตี้)`, ephemeral: true });
-                    return;
-                }
-            }
             if (inPlayers) {
                 if (game.hasRoles) {
                     const menu = _buildRoleMenu(`select_role_${message.id}`, 'เปลี่ยนตำแหน่ง', game);

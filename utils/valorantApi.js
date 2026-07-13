@@ -59,4 +59,37 @@ async function fetchCompetitiveMatchesSince(region, name, tag, afterMs) {
     return result;
 }
 
-module.exports = { fetchAccount, fetchCompetitiveMatchesSince };
+// ดึงแมตช์ Competitive ล่าสุด 1 เกม ของคนคนนี้ พร้อมสถิติในเกมนั้น
+async function fetchLastMatch(region, name, tag) {
+    const res = await fetch(
+        `${BASE_URL}/valorant/v3/matches/${region}/${encodeURIComponent(name)}/${encodeURIComponent(tag)}?size=10`,
+        { headers: _headers() }
+    );
+    if (!res.ok) return null;
+    const json = await res.json();
+    const matches = json?.data || [];
+    const match = matches.find(m => m.metadata?.mode?.toLowerCase() === 'competitive');
+    if (!match) return null;
+
+    const targetKey = `${name}#${tag}`.toLowerCase();
+    const allPlayers = match.players?.all_players || [];
+    const me = allPlayers.find(p => `${p.name}#${p.tag}`.toLowerCase() === targetKey);
+    if (!me) return null;
+
+    const teamKey = (me.team || me.team_id || '').toLowerCase();
+    const team = match.teams?.[teamKey];
+
+    return {
+        matchId: match.metadata?.matchid || match.metadata?.match_id || null,
+        map: match.metadata?.map || '?',
+        mode: match.metadata?.mode || '?',
+        agent: me.character || me.agent?.name || me.agent || '?',
+        kills: me.stats?.kills ?? 0,
+        deaths: me.stats?.deaths ?? 0,
+        assists: me.stats?.assists ?? 0,
+        score: me.stats?.score ?? 0,
+        won: team ? !!team.has_won : null,
+    };
+}
+
+module.exports = { fetchAccount, fetchCompetitiveMatchesSince, fetchLastMatch };
