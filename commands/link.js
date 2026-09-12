@@ -1,5 +1,5 @@
 const { SlashCommandBuilder } = require('discord.js');
-const { fetchAccount } = require('../utils/valorantApi');
+const { fetchAccount, fetchCurrentRank } = require('../utils/valorantApi');
 const { setLink } = require('../utils/playerLinks');
 
 const REGIONS = [
@@ -44,6 +44,13 @@ module.exports = {
         }
 
         setLink(interaction.user.id, account.name || name, account.tag || tag, region);
-        await interaction.editReply(`✅ ผูกบัญชี **${account.name}#${account.tag}** เรียบร้อย — บอทจะดึงสถิติให้อัตโนมัติหลังจบปาร์ตี้ Valorant`);
+
+        let rankLine = '';
+        try {
+            const rank = await fetchCurrentRank(region, account.name || name, account.tag || tag);
+            if (rank) rankLine = `\n🏅 อันดับปัจจุบัน: **${rank.tierName}** (${rank.rr} RR)`;
+        } catch (e) { /* ไม่บล็อกการผูกบัญชีถ้าดึงอันดับไม่สำเร็จ */ }
+
+        await interaction.editReply(`✅ ผูกบัญชี **${account.name}#${account.tag}** เรียบร้อย — บอทจะดึงสถิติให้อัตโนมัติหลังจบปาร์ตี้ Valorant${rankLine}`);
     }
 };

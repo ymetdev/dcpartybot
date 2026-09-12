@@ -24,4 +24,10 @@ function setLink(discordId, name, tag, region) {
     _save(data);
 }
 
-module.exports = { getLink, setLink };
+// คืนทุกคนที่ /link ไว้ — ใช้ทำ Leaderboard
+function getAllLinks() {
+    const data = _load();
+    return Object.entries(data).map(([discordId, link]) => ({ discordId, ...link }));
+}
+
+module.exports = { getLink, setLink, getAllLinks };

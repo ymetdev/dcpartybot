@@ -1,5 +1,5 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
-const { fetchAccount, fetchLastMatch } = require('../utils/valorantApi');
+const { fetchAccount, fetchLastMatch, fetchCurrentRank } = require('../utils/valorantApi');
 const { getLink } = require('../utils/playerLinks');
 
 const REGIONS = [
@@ -72,6 +72,11 @@ module.exports = {
             return;
         }
 
+        let rank = null;
+        try {
+            rank = await fetchCurrentRank(region, account.name || name, account.tag || tag);
+        } catch (e) { /* ไม่บล็อกสถิติแมตช์ถ้าดึงอันดับไม่สำเร็จ */ }
+
         const kd = match.deaths > 0 ? (match.kills / match.deaths).toFixed(2) : match.kills.toFixed(2);
         const resultText = match.won === null ? '' : (match.won ? '🟢 ชนะ' : '🔴 แพ้');
 
@@ -85,6 +90,12 @@ module.exports = {
                 { name: 'K/D/A', value: `${match.kills}/${match.deaths}/${match.assists} (${kd})`, inline: true },
                 { name: 'คะแนน', value: `${match.score}`, inline: true },
             );
+
+        if (rank) {
+            const changeStr = rank.mmrChange !== 0 ? ` (${rank.mmrChange > 0 ? '+' : ''}${rank.mmrChange} RR)` : '';
+            embed.addFields({ name: 'อันดับปัจจุบัน', value: `🏅 ${rank.tierName} — ${rank.rr} RR${changeStr}`, inline: false });
+            if (rank.iconUrl) embed.setThumbnail(rank.iconUrl);
+        }
 
         await interaction.editReply({ embeds: [embed] });
     }

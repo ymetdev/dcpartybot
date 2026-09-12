@@ -92,4 +92,68 @@ async function fetchLastMatch(region, name, tag) {
     };
 }
 
-module.exports = { fetchAccount, fetchCompetitiveMatchesSince, fetchLastMatch };
+// ดึงอันดับ Competitive ปัจจุบันของคนคนนี้
+async function fetchCurrentRank(region, name, tag) {
+    const res = await fetch(
+        `${BASE_URL}/valorant/v2/mmr/${region}/${encodeURIComponent(name)}/${encodeURIComponent(tag)}`,
+        { headers: _headers() }
+    );
+    if (!res.ok) return null;
+    const json = await res.json();
+    const cd = json?.data?.current_data;
+    if (!cd || !cd.currenttierpatched) return null;
+
+    return {
+        tierName: cd.currenttierpatched,
+        rr: cd.ranking_in_tier ?? 0,
+        mmrChange: cd.mmr_change_to_last_game ?? 0,
+        iconUrl: cd.images?.small || cd.images?.large || null,
+    };
+}
+
+// สรุปสถิติ Competitive ของคนคนนี้ทุกแมตช์ที่เริ่มหลัง afterMs (ใช้ทำ Weekly Leaderboard)
+// หมายเหตุ: จำกัดที่ 10 แมตช์ล่าสุดเหมือน fetchLastMatch/fetchCompetitiveMatchesSince —
+// ถ้าใครเล่น Competitive เกิน 10 เกมในสัปดาห์นั้น แมตช์เก่ากว่านั้นจะไม่ถูกนับ
+async function fetchWeeklyStats(region, name, tag, afterMs) {
+    const res = await fetch(
+        `${BASE_URL}/valorant/v3/matches/${region}/${encodeURIComponent(name)}/${encodeURIComponent(tag)}?size=10`,
+        { headers: _headers() }
+    );
+    if (!res.ok) return null;
+    const json = await res.json();
+    const matches = json?.data || [];
+    const targetKey = `${name}#${tag}`.toLowerCase();
+
+    let kills = 0, deaths = 0, assists = 0, wins = 0, losses = 0, matchesCounted = 0;
+
+    for (const match of matches) {
+        if (match.metadata?.mode?.toLowerCase() !== 'competitive') continue;
+
+        const startedMs = (match.metadata?.game_start ?? 0) * 1000;
+        if (startedMs < afterMs) continue;
+
+        const allPlayers = match.players?.all_players || [];
+        const me = allPlayers.find(p => `${p.name}#${p.tag}`.toLowerCase() === targetKey);
+        if (!me) continue;
+
+        const teamKey = (me.team || me.team_id || '').toLowerCase();
+        const team = match.teams?.[teamKey];
+
+        kills += me.stats?.kills ?? 0;
+        deaths += me.stats?.deaths ?? 0;
+        assists += me.stats?.assists ?? 0;
+        if (team?.has_won === true) wins++;
+        else if (team?.has_won === false) losses++;
+        matchesCounted++;
+    }
+
+    if (matchesCounted === 0) return null;
+
+    return {
+        matches: matchesCounted,
+        kills, deaths, assists, wins, losses,
+        kd: deaths > 0 ? kills / deaths : kills,
+    };
+}
+
+module.exports = { fetchAccount, fetchCompetitiveMatchesSince, fetchLastMatch, fetchCurrentRank, fetchWeeklyStats };
