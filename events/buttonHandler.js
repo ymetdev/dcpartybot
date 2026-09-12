@@ -244,8 +244,23 @@ async function handleButtonInteraction(interaction) {
     const hostMatch = embed.description.match(/👑 <@(\d+)>/);
     const isHost = hostMatch ? hostMatch[1] === userId : false;
 
+    // ── เลื่อนเวลา — ใครก็ได้ที่อยู่ในปาร์ตี้นี้ (Host, ผู้เล่น หรือตัวสำรอง) กดได้ ──
+    if (customId === 'btn_edit_time') {
+        const inParty = isHost || embed.description.includes(userMention);
+        if (!inParty) {
+            await interaction.reply({ content: '❌ ต้องอยู่ในปาร์ตี้นี้ก่อนถึงจะเลื่อนเวลาได้', ephemeral: true });
+            return;
+        }
+        const modal = new ModalBuilder().setCustomId('modal_edit_time').setTitle('เลื่อนเวลา');
+        modal.addComponents(new ActionRowBuilder().addComponents(
+            new TextInputBuilder().setCustomId('input_time').setLabel('เวลาใหม่ (HH:MM)').setStyle(TextInputStyle.Short).setPlaceholder('เช่น 21:00').setRequired(true)
+        ));
+        await interaction.showModal(modal);
+        return;
+    }
+
     // ── Host-only (ก่อน lock) ─────────────────────────────────────────────────
-    if (['btn_cancel', 'btn_edit_time', 'btn_kick', 'btn_transfer'].includes(customId)) {
+    if (['btn_cancel', 'btn_kick', 'btn_transfer'].includes(customId)) {
         if (!isHost) {
             await interaction.reply({ content: '❌ เฉพาะ Host เท่านั้น', ephemeral: true });
             return;
@@ -271,15 +286,6 @@ async function handleButtonInteraction(interaction) {
             } finally {
                 processingMessages.delete(message.id);
             }
-            return;
-        }
-
-        if (customId === 'btn_edit_time') {
-            const modal = new ModalBuilder().setCustomId('modal_edit_time').setTitle('เลื่อนเวลา');
-            modal.addComponents(new ActionRowBuilder().addComponents(
-                new TextInputBuilder().setCustomId('input_time').setLabel('เวลาใหม่ (HH:MM)').setStyle(TextInputStyle.Short).setPlaceholder('เช่น 21:00').setRequired(true)
-            ));
-            await interaction.showModal(modal);
             return;
         }
 

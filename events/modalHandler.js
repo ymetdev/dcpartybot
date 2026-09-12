@@ -33,6 +33,9 @@ async function handleModalInteraction(interaction) {
         await message.edit({ embeds: [newEmbed] });
         await interaction.editReply({ content: `✅ เลื่อนเวลาเป็น **${newTime}** แล้ว` });
 
+        const gameNameForNotice = embed.title.replace('🎮 ', '').trim();
+        await message.channel.send(`🕒 <@${interaction.user.id}> เลื่อนเวลาปาร์ตี้ **${gameNameForNotice}** เป็น **${newTime}** แล้ว`);
+
         scheduleJob(message, newTime);
 
         // Re-generate canvas
